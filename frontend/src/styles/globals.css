@@ -1,0 +1,21 @@
+@import 'tailwindcss';
+
+/*
+ * Flinq theme tokens.
+ *
+ * Tailwind CSS v4 uses the `@theme` directive to define design tokens.
+ * Semantic tokens (bg-primary, text-primary, accent-*) will be expanded when
+ * the real reader UI lands. For the skeleton we only lock in the base colors.
+ */
+@theme {
+  --color-bg-primary: oklch(1 0 0);
+  --color-bg-primary-dark: oklch(0.141 0.005 285.823);
+  --color-text-primary: oklch(0.141 0.005 285.823);
+  --color-text-primary-dark: oklch(0.985 0 0);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}

@@ -1,0 +1,109 @@
+[project]
+name = "flinq"
+version = "0.0.1"
+description = "Self-hosted content-driven language learning platform (backend)"
+readme = "README.md"
+license = { file = "../LICENSE" }
+requires-python = ">=3.13"
+authors = [{ name = "Flinq contributors" }]
+
+dependencies = [
+    # Web
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "python-multipart>=0.0.17",
+
+    # Validation & settings
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+
+    # ORM & migrations
+    "sqlalchemy[asyncio]>=2.0.36",
+    "alembic>=1.14",
+    "asyncpg>=0.30",
+
+    # HTTP client (AI / OCR integrations)
+    "httpx>=0.28",
+
+    # Job queue
+    "taskiq>=0.11",
+    "taskiq-redis>=1.0",
+
+    # Observability
+    "loguru>=0.7",
+
+    # CLI
+    "typer>=0.15",
+
+    # Security
+    "argon2-cffi>=23.1",
+]
+
+[project.scripts]
+flinq = "flinq.cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flinq"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "testcontainers[postgres,redis]>=4.9",
+    "ruff>=0.8",
+    "pyright>=1.1.390",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+    "N",    # pep8-naming
+    "ASYNC", # flake8-async
+    "S",    # flake8-bandit (security)
+    "A",    # flake8-builtins
+    "T20",  # flake8-print
+]
+ignore = [
+    "S101",  # allow assert in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.coverage.run]
+branch = true
+source = ["src/flinq"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

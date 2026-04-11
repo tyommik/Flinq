@@ -1,0 +1,95 @@
+# Flinq production compose stack.
+# For dev overrides (hot reload, bind mounts, frontend Vite server) use:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+name: flinq
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-flinq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flinq}
+      POSTGRES_DB: ${POSTGRES_DB:-flinq}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-flinq} -d ${POSTGRES_DB:-flinq}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app-api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      FLINQ_ENV: ${FLINQ_ENV:-prod}
+      FLINQ_LOG_LEVEL: ${FLINQ_LOG_LEVEL:-INFO}
+      FLINQ_SECRET_KEY: ${FLINQ_SECRET_KEY}
+      FLINQ_DATABASE_URL: ${FLINQ_DATABASE_URL:-postgresql+asyncpg://flinq:flinq@postgres:5432/flinq}
+      FLINQ_REDIS_URL: ${FLINQ_REDIS_URL:-redis://redis:6379/0}
+      FLINQ_LLM_ENABLED: ${FLINQ_LLM_ENABLED:-false}
+      FLINQ_LLM_BASE_URL: ${FLINQ_LLM_BASE_URL:-}
+      FLINQ_LLM_API_KEY: ${FLINQ_LLM_API_KEY:-}
+      FLINQ_LLM_MODEL: ${FLINQ_LLM_MODEL:-}
+      FLINQ_OCR_ENABLED: ${FLINQ_OCR_ENABLED:-false}
+      FLINQ_OCR_BASE_URL: ${FLINQ_OCR_BASE_URL:-}
+      FLINQ_OCR_API_KEY: ${FLINQ_OCR_API_KEY:-}
+    volumes:
+      - app_data:/var/lib/flinq
+    ports:
+      - "8000:8000"
+    command: ["uv", "run", "flinq", "serve", "--host", "0.0.0.0", "--port", "8000"]
+
+  app-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      FLINQ_ENV: ${FLINQ_ENV:-prod}
+      FLINQ_LOG_LEVEL: ${FLINQ_LOG_LEVEL:-INFO}
+      FLINQ_SECRET_KEY: ${FLINQ_SECRET_KEY}
+      FLINQ_DATABASE_URL: ${FLINQ_DATABASE_URL:-postgresql+asyncpg://flinq:flinq@postgres:5432/flinq}
+      FLINQ_REDIS_URL: ${FLINQ_REDIS_URL:-redis://redis:6379/0}
+      FLINQ_LLM_ENABLED: ${FLINQ_LLM_ENABLED:-false}
+      FLINQ_LLM_BASE_URL: ${FLINQ_LLM_BASE_URL:-}
+      FLINQ_LLM_API_KEY: ${FLINQ_LLM_API_KEY:-}
+      FLINQ_LLM_MODEL: ${FLINQ_LLM_MODEL:-}
+      FLINQ_OCR_ENABLED: ${FLINQ_OCR_ENABLED:-false}
+      FLINQ_OCR_BASE_URL: ${FLINQ_OCR_BASE_URL:-}
+      FLINQ_OCR_API_KEY: ${FLINQ_OCR_API_KEY:-}
+    volumes:
+      - app_data:/var/lib/flinq
+    command: ["uv", "run", "flinq", "worker"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  app_data:
