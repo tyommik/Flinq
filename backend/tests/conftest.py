@@ -6,10 +6,12 @@ import os
 from collections.abc import AsyncIterator
 
 import pytest
+import redis.asyncio as aioredis
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 
 from flinq.core.config import get_settings
 from flinq.core.db import dispose_engine, init_engine, session_scope
@@ -74,3 +76,19 @@ async def client() -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture(scope="session")
+def _redis_container():  # type: ignore[return]
+    with RedisContainer("redis:7-alpine") as r:
+        yield r
+
+
+@pytest.fixture
+async def redis_client(_redis_container: RedisContainer) -> AsyncIterator[aioredis.Redis]:
+    host = _redis_container.get_container_host_ip()
+    port = int(_redis_container.get_exposed_port(6379))
+    client = aioredis.Redis(host=host, port=port, decode_responses=True)
+    yield client
+    await client.flushdb()
+    await client.aclose()
