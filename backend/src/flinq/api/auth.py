@@ -11,6 +11,7 @@ from flinq.core.db import get_session
 from flinq.core.rate_limit import RateLimiter
 from flinq.core.redis import get_redis
 from flinq.modules.identity import service
+from flinq.modules.identity.middleware import CSRF_COOKIE, SESSION_COOKIE
 from flinq.modules.identity.repo import SessionRepo, UserRepo
 from flinq.modules.identity.schemas import LoginRequest, RegisterRequest
 
@@ -64,3 +65,17 @@ async def login(
         "id": str(user.id),
         "needs_onboarding": user.onboarded_at is None,
     }
+
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    token = getattr(request.state, "session_token", None)
+    if token:
+        await SessionRepo(session).invalidate(token)
+    response.delete_cookie(SESSION_COOKIE)
+    response.delete_cookie(CSRF_COOKIE)
+    return {"ok": True}

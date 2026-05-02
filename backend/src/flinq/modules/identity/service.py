@@ -102,7 +102,7 @@ async def login_user(
         session_token=token,
         csrf_token=csrf,
         persistent=remember_me,
-        secure=not settings.is_dev,
+        secure=settings.is_prod,
     )
     return user
 
@@ -151,6 +151,6 @@ async def register_user(
         session_token=token,
         csrf_token=csrf,
         persistent=True,
-        secure=not settings.is_dev,
+        secure=settings.is_prod,
     )
     return user
