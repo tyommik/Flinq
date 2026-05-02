@@ -17,6 +17,7 @@ from flinq.api.health import router as health_router
 from flinq.core.config import get_settings
 from flinq.core.db import dispose_engine, init_engine
 from flinq.core.logging import configure_logging
+from flinq.modules.identity.middleware import CSRFMiddleware, SessionMiddleware
 
 
 @asynccontextmanager
@@ -42,6 +43,12 @@ def create_app() -> FastAPI:
         version=__version__,
         lifespan=lifespan,
     )
+
+    # Starlette stacks middleware in reverse add order: last added = outermost (runs first).
+    # Execution order wanted: Session (sets state) → CSRF (reads cookies) → handler.
+    # Session must be outermost, so it is added LAST.
+    app.add_middleware(CSRFMiddleware)
+    app.add_middleware(SessionMiddleware)  # outer — runs first per request
 
     app.include_router(health_router)
 
