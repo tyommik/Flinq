@@ -7,10 +7,62 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.exc import PendingRollbackError
+from sqlalchemy.ext.asyncio import AsyncSession
+from testcontainers.postgres import PostgresContainer
+
+from flinq.core.config import get_settings
+from flinq.core.db import dispose_engine, init_engine, session_scope
 
 # Ensure settings are loaded in "test" mode before anything else is imported.
 os.environ.setdefault("FLINQ_ENV", "test")
 os.environ.setdefault("FLINQ_SECRET_KEY", "test-secret-key-for-pytest")
+
+
+@pytest.fixture(scope="session")
+def monkeypatch_session():  # type: ignore[return]
+    from _pytest.monkeypatch import MonkeyPatch
+
+    mp = MonkeyPatch()
+    yield mp
+    mp.undo()
+
+
+@pytest.fixture(scope="session")
+def _pg_container():  # type: ignore[return]
+    with PostgresContainer("postgres:16-alpine", driver="asyncpg") as pg:
+        yield pg
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _db_setup(_pg_container: PostgresContainer, monkeypatch_session: pytest.MonkeyPatch) -> None:
+    url = _pg_container.get_connection_url()  # already asyncpg-formatted
+    monkeypatch_session.setenv("FLINQ_DATABASE_URL", url)
+    get_settings.cache_clear()
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def _init_schema(_db_setup: None) -> AsyncIterator[None]:
+    from flinq.core.db import Base
+    from flinq.modules.identity import models as _identity_models  # noqa: F401
+
+    settings = get_settings()
+    engine = init_engine(settings)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    await dispose_engine()
+
+
+@pytest.fixture
+async def db_session() -> AsyncIterator[AsyncSession]:
+    try:
+        async with session_scope() as s:
+            yield s
+    except PendingRollbackError:
+        # A test intentionally triggered a DB exception (e.g. uniqueness test).
+        # session_scope already rolled back; swallow the teardown error cleanly.
+        pass
 
 
 @pytest.fixture
