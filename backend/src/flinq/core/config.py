@@ -13,12 +13,14 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
 
 class Settings(BaseSettings):
     """Top-level application settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(REPO_ROOT / ".env", ".env"),
         env_file_encoding="utf-8",
         env_prefix="FLINQ_",
         extra="ignore",
@@ -48,6 +50,15 @@ class Settings(BaseSettings):
 
     # Frontend static assets (production only)
     static_dir: Path | None = None
+
+    # Auth (ADR-0008)
+    allow_public_registration: bool = True
+    initial_admin_email: str = ""
+    session_ttl_seconds: int = 30 * 24 * 3600  # 30 days
+    login_max_attempts: int = 5
+    login_window_seconds: int = 15 * 60
+    register_max_attempts: int = 10
+    register_window_seconds: int = 3600
 
     @property
     def is_dev(self) -> bool:
