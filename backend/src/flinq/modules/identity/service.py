@@ -158,6 +158,37 @@ async def register_user(
     return user
 
 
+async def delete_me(
+    user_id: uuid.UUID,
+    *,
+    password: str,
+    user_repo: UserRepo,
+) -> None:
+    """Verify password then hard-delete the user (cascade removes everything)."""
+    user = await user_repo.get_by_id(user_id)
+    if user is None or not verify_password(password, user.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid password")
+    await user_repo.hard_delete(user_id)
+
+
+async def set_last_language(
+    user_id: uuid.UUID,
+    *,
+    language_code: str,
+    user_repo: UserRepo,
+) -> None:
+    """Update user_settings.last_learning_language_code."""
+    user = await user_repo.get_by_id_full(user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+    if language_code not in {ll.language_code for ll in user.learning_languages}:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Language is not in your learning languages",
+        )
+    user.settings.last_learning_language_code = language_code
+
+
 async def complete_onboarding(
     user_id: uuid.UUID,
     *,

@@ -1,14 +1,20 @@
-"""User profile endpoints: GET /me, POST /me/onboarding, DELETE /me."""
+"""User profile endpoints: GET /me, POST /me/onboarding, DELETE /me, PATCH /me/last-language."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.core.db import get_session
 from flinq.modules.identity import service
+from flinq.modules.identity.middleware import CSRF_COOKIE, SESSION_COOKIE
 from flinq.modules.identity.repo import UserRepo
-from flinq.modules.identity.schemas import MeResponse, OnboardingRequest
+from flinq.modules.identity.schemas import (
+    DeleteMeRequest,
+    MeResponse,
+    OnboardingRequest,
+    SetLastLanguageRequest,
+)
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -55,3 +61,36 @@ async def post_onboarding(
         session=session,
     )
     return {"ok": True, "redirect": f"/learn/{first_lang}/library"}
+
+
+@router.delete("")
+async def delete_me(
+    body: DeleteMeRequest,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+    await service.delete_me(
+        user_id, password=body.password, user_repo=UserRepo(session)
+    )
+    response.delete_cookie(SESSION_COOKIE)
+    response.delete_cookie(CSRF_COOKIE)
+    return {"ok": True}
+
+
+@router.patch("/last-language")
+async def patch_last_language(
+    body: SetLastLanguageRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+    await service.set_last_language(
+        user_id, language_code=body.language_code, user_repo=UserRepo(session)
+    )
+    return {"ok": True}

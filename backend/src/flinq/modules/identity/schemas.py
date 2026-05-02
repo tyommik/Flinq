@@ -56,6 +56,17 @@ class DeleteMeRequest(BaseModel):
     password: str
 
 
+class SetLastLanguageRequest(BaseModel):
+    language_code: str
+
+    @field_validator("language_code")
+    @classmethod
+    def _supported(cls, v: str) -> str:
+        if v not in SUPPORTED_LEARNING_LANGUAGES:
+            raise ValueError(f"unsupported language: {v}")
+        return v
+
+
 class MeResponse(BaseModel):
     id: uuid.UUID
     email: str

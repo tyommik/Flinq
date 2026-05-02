@@ -36,10 +36,16 @@ class User(Base):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    profile: Mapped[UserProfile] = relationship(back_populates="user", uselist=False)
-    settings: Mapped[UserSettings] = relationship(back_populates="user", uselist=False)
-    learning_languages: Mapped[list[UserLearningLanguage]] = relationship(back_populates="user")
-    sessions: Mapped[list[UserSession]] = relationship(back_populates="user")
+    profile: Mapped[UserProfile] = relationship(
+        back_populates="user", uselist=False, passive_deletes=True
+    )
+    settings: Mapped[UserSettings] = relationship(
+        back_populates="user", uselist=False, passive_deletes=True
+    )
+    learning_languages: Mapped[list[UserLearningLanguage]] = relationship(
+        back_populates="user", passive_deletes=True
+    )
+    sessions: Mapped[list[UserSession]] = relationship(back_populates="user", passive_deletes=True)
 
     __table_args__ = (CheckConstraint("role IN ('learner', 'admin')", name="users_role_check"),)
 
