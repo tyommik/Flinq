@@ -1,23 +1,8 @@
-from datetime import UTC, datetime, timedelta
-
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.main import create_app
 from flinq.modules.identity.middleware import CSRF_COOKIE
-from flinq.modules.identity.repo import SessionRepo, UserRepo
-
-
-async def _make_user_with_session(
-    db: AsyncSession, *, email: str, token: str, expires_in: timedelta = timedelta(days=30)
-) -> str:
-    user = await UserRepo(db).create(email=email, password_hash="h", display_name="X")
-    await SessionRepo(db).create(
-        token=token,
-        user_id=user.id,
-        expires_at=datetime.now(UTC) + expires_in,
-    )
-    return token
 
 
 async def test_no_cookie_state_is_none(db_session: AsyncSession) -> None:
