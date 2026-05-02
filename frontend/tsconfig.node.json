@@ -7,7 +7,8 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "strict": true,
-    "noEmit": true
+    "composite": true,
+    "types": ["vitest/globals", "node"]
   },
   "include": ["vite.config.ts"]
 }

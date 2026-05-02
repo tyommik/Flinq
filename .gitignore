@@ -273,6 +273,10 @@ Thumbs.db
 node_modules/
 frontend/dist/
 frontend/.vite/
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+!frontend/src/lib/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
