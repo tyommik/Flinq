@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.core.config import get_settings
 from flinq.core.rate_limit import RateLimiter
@@ -21,7 +23,7 @@ from flinq.modules.identity.middleware import (
     SESSION_COOKIE,
     SESSION_TTL,
 )
-from flinq.modules.identity.models import User
+from flinq.modules.identity.models import User, UserLearningLanguage
 from flinq.modules.identity.repo import SessionRepo, UserRepo
 
 
@@ -154,3 +156,30 @@ async def register_user(
         secure=settings.is_prod,
     )
     return user
+
+
+async def complete_onboarding(
+    user_id: uuid.UUID,
+    *,
+    ui_language: str,
+    learning_languages: list[str],
+    translation_language: str,
+    user_repo: UserRepo,
+    session: AsyncSession,
+) -> str:
+    """Persist onboarding choices and return the redirect target language."""
+    user = await user_repo.get_by_id_full(user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+
+    user.profile.ui_language_code = ui_language
+    user.settings.preferred_translation_language_code = translation_language
+    user.settings.last_learning_language_code = learning_languages[0]
+
+    existing = {ll.language_code for ll in user.learning_languages}
+    for code in learning_languages:
+        if code not in existing:
+            session.add(UserLearningLanguage(user_id=user_id, language_code=code))
+
+    await user_repo.mark_onboarded(user_id, datetime.now(UTC))
+    return learning_languages[0]

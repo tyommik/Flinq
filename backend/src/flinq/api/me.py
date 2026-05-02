@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.core.db import get_session
+from flinq.modules.identity import service
 from flinq.modules.identity.repo import UserRepo
-from flinq.modules.identity.schemas import MeResponse
+from flinq.modules.identity.schemas import MeResponse, OnboardingRequest
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -34,3 +35,23 @@ async def get_me(
         needs_onboarding=user.onboarded_at is None,
         onboarded_at=user.onboarded_at,
     )
+
+
+@router.post("/onboarding")
+async def post_onboarding(
+    body: OnboardingRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+    first_lang = await service.complete_onboarding(
+        user_id,
+        ui_language=body.ui_language,
+        learning_languages=body.learning_languages,
+        translation_language=body.translation_language,
+        user_repo=UserRepo(session),
+        session=session,
+    )
+    return {"ok": True, "redirect": f"/learn/{first_lang}/library"}
