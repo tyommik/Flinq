@@ -44,7 +44,15 @@ def _db_setup(_pg_container: PostgresContainer, monkeypatch_session: pytest.Monk
 
 
 @pytest.fixture(scope="session", autouse=True)
-async def _init_schema(_db_setup: None) -> AsyncIterator[None]:
+def _redis_setup(_redis_container: RedisContainer, monkeypatch_session: pytest.MonkeyPatch) -> None:
+    host = _redis_container.get_container_host_ip()
+    port = int(_redis_container.get_exposed_port(6379))
+    monkeypatch_session.setenv("FLINQ_REDIS_URL", f"redis://{host}:{port}/0")
+    get_settings.cache_clear()
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def _init_schema(_db_setup: None, _redis_setup: None) -> AsyncIterator[None]:
     from flinq.core.db import Base
     from flinq.modules.identity import models as _identity_models  # noqa: F401
 
@@ -54,6 +62,9 @@ async def _init_schema(_db_setup: None) -> AsyncIterator[None]:
         await conn.run_sync(Base.metadata.create_all)
     yield
     await dispose_engine()
+    from flinq.core.redis import dispose_redis
+
+    await dispose_redis()
 
 
 @pytest.fixture

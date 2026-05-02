@@ -9,10 +9,12 @@ from fastapi import HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 
 from flinq.core.config import get_settings
+from flinq.core.rate_limit import RateLimiter
 from flinq.core.security import (
     generate_csrf_token,
     generate_session_token,
     hash_password,
+    verify_password,
 )
 from flinq.modules.identity.middleware import (
     CSRF_COOKIE,
@@ -55,6 +57,54 @@ def _set_session_cookies(
         secure=secure,
         samesite="lax",
     )
+
+
+async def login_user(
+    request: Request,
+    response: Response,
+    *,
+    email: str,
+    password: str,
+    remember_me: bool,
+    user_repo: UserRepo,
+    session_repo: SessionRepo,
+    rate_limiter: RateLimiter,
+) -> User:
+    settings = get_settings()
+    ip = request.client.host if request.client else "unknown"
+    rl_key = f"login:{ip}:{email.lower().strip()}"
+
+    if not await rate_limiter.check_and_increment(rl_key):
+        retry_after = await rate_limiter.get_retry_after(rl_key)
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Too many attempts. Retry in {max(retry_after // 60, 1)} min",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    user = await user_repo.get_by_email(email)
+    if user is None or not verify_password(password, user.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
+
+    await rate_limiter.reset(rl_key)
+
+    token = generate_session_token()
+    csrf = generate_csrf_token()
+    await session_repo.create(
+        token=token,
+        user_id=user.id,
+        expires_at=datetime.now(UTC) + SESSION_TTL,
+        user_agent=request.headers.get("user-agent"),
+        ip_hash=_hash_ip(ip if ip != "unknown" else None),
+    )
+    _set_session_cookies(
+        response,
+        session_token=token,
+        csrf_token=csrf,
+        persistent=remember_me,
+        secure=not settings.is_dev,
+    )
+    return user
 
 
 async def register_user(
