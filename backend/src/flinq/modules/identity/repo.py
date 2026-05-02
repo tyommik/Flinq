@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from flinq.modules.identity.models import (
     User,
@@ -44,6 +45,19 @@ class UserRepo:
 
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
         return await self.session.get(User, user_id)
+
+    async def get_by_id_full(self, user_id: uuid.UUID) -> User | None:
+        """Return User with profile, settings, and learning_languages eager-loaded."""
+        stmt = (
+            select(User)
+            .where(User.id == user_id)
+            .options(
+                selectinload(User.profile),
+                selectinload(User.settings),
+                selectinload(User.learning_languages),
+            )
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def mark_onboarded(self, user_id: uuid.UUID, when: datetime) -> None:
         await self.session.execute(update(User).where(User.id == user_id).values(onboarded_at=when))
