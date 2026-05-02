@@ -1,16 +1,14 @@
-import type { QueryClient } from '@tanstack/react-query'
-import { createRootRouteWithContext, createRoute } from '@tanstack/react-router'
+import { createRoute } from '@tanstack/react-router'
 
-import { RootLayout } from './routes/__root'
 import { IndexRoute } from './routes/index'
+import { rootRoute } from './routes/__rootRoute'
+import { loginRoute } from './routes/login'
+import { registerRoute } from './routes/register'
+import { onboardingRoute } from './routes/onboarding'
+import { learnLangLibraryStubRoute } from './routes/learn-stub'
 
-export interface RouterContext {
-  queryClient: QueryClient
-}
-
-const rootRoute = createRootRouteWithContext<RouterContext>()({
-  component: RootLayout,
-})
+export { rootRoute } from './routes/__rootRoute'
+export type { RouterContext } from './routes/__rootRoute'
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -18,4 +16,10 @@ const indexRoute = createRoute({
   component: IndexRoute,
 })
 
-export const routeTree = rootRoute.addChildren([indexRoute])
+export const routeTree = rootRoute.addChildren([
+  indexRoute,
+  loginRoute,
+  registerRoute,
+  onboardingRoute,
+  learnLangLibraryStubRoute,
+])
