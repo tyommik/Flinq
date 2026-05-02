@@ -5,13 +5,19 @@ from datetime import datetime
 from typing import Literal
 
 from sqlalchemy import (
-    Boolean, CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint, text,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+    func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from flinq.core.db import Base
-
 
 UserRole = Literal["learner", "admin"]
 
@@ -30,14 +36,12 @@ class User(Base):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    profile: Mapped["UserProfile"] = relationship(back_populates="user", uselist=False)
-    settings: Mapped["UserSettings"] = relationship(back_populates="user", uselist=False)
-    learning_languages: Mapped[list["UserLearningLanguage"]] = relationship(back_populates="user")
-    sessions: Mapped[list["UserSession"]] = relationship(back_populates="user")
+    profile: Mapped[UserProfile] = relationship(back_populates="user", uselist=False)
+    settings: Mapped[UserSettings] = relationship(back_populates="user", uselist=False)
+    learning_languages: Mapped[list[UserLearningLanguage]] = relationship(back_populates="user")
+    sessions: Mapped[list[UserSession]] = relationship(back_populates="user")
 
-    __table_args__ = (
-        CheckConstraint("role IN ('learner', 'admin')", name="users_role_check"),
-    )
+    __table_args__ = (CheckConstraint("role IN ('learner', 'admin')", name="users_role_check"),)
 
 
 class UserProfile(Base):
@@ -54,7 +58,10 @@ class UserProfile(Base):
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        onupdate=func.now(),
     )
 
     user: Mapped[User] = relationship(back_populates="profile")
@@ -66,7 +73,9 @@ class UserSettings(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    preferred_translation_language_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    preferred_translation_language_code: Mapped[str | None] = mapped_column(
+        String(8), nullable=True
+    )
     last_learning_language_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     reader_view_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="page")
     audio_speed: Mapped[float] = mapped_column(nullable=False, default=1.0)
@@ -105,7 +114,9 @@ class UserSession(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
