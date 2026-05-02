@@ -14,7 +14,7 @@ dependencies = [
     "python-multipart>=0.0.17",
 
     # Validation & settings
-    "pydantic>=2.9",
+    "pydantic[email]>=2.9",
     "pydantic-settings>=2.6",
 
     # ORM & migrations
@@ -93,6 +93,7 @@ select = [
 ]
 ignore = [
     "S101",  # allow assert in tests
+    "B008",  # FastAPI Depends() in argument defaults is idiomatic
 ]
 
 [tool.ruff.lint.per-file-ignores]

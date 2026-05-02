@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from flinq import __version__
+from flinq.api.auth import router as auth_router
 from flinq.api.health import router as health_router
 from flinq.core.config import get_settings
 from flinq.core.db import dispose_engine, init_engine
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.add_middleware(SessionMiddleware)  # outer — runs first per request
 
     app.include_router(health_router)
+    app.include_router(auth_router)
 
     # Serve frontend static assets in production (see architecture §5.3).
     if settings.static_dir is not None and settings.static_dir.exists():

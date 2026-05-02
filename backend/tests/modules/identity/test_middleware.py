@@ -38,9 +38,10 @@ async def test_csrf_skipped_for_public_paths() -> None:
     """POST /auth/register and /auth/login are PUBLIC_PATHS — no CSRF needed."""
     transport = ASGITransport(app=create_app())
     async with AsyncClient(transport=transport, base_url="http://test") as c:
-        # /auth/register doesn't exist yet → 404, but CSRF should be skipped
+        # /auth/register exists but empty body fails Pydantic validation → 422
+        # The important assertion is that CSRF was NOT enforced (would be 403)
         r = await c.post("/auth/register", json={})
-        assert r.status_code == 404  # not 403
+        assert r.status_code != 403  # CSRF skipped for public path
 
 
 async def test_csrf_skipped_for_get_requests() -> None:
