@@ -179,6 +179,10 @@
 - `docs/adr/ADR-0003-llm-provider-openai-compatible.md` — выбор OpenAI-compatible адаптера как единственного LLM-провайдера в MVP.
 - `docs/adr/ADR-0004-dictionary-wiktionary-provider.md` — источник словарных данных и provider interface.
 - `docs/adr/ADR-0005-word-status-model-lingq-levels.md` — текущая статусная модель слов: `new / tracked / known / ignored` с confidence `0..5`, подсветка и reader-flow. Supersedes ADR-0002.
+- `docs/adr/ADR-0006-tech-stack.md` — Python 3.13 backend, React frontend, monorepo, FastAPI + SQLAlchemy + Taskiq.
+- `docs/adr/ADR-0007-url-and-routing.md` — path-схема `/learn/:lang/...`, query только для major tabs, остальное client-state.
+- `docs/adr/ADR-0008-auth-model.md` — email + password, argon2id, server-side sessions в Postgres, CSRF double-submit, CLI-only forgot password, env-bootstrap admin.
+- `docs/adr/ADR-0009-frontend-ui-kit.md` — shadcn/ui поверх Radix + Tailwind v4, two-level design tokens (oklch base + Tailwind theme mapping), light mode only в MVP.
 
 ## 13. Non-goals MVP (для явной фиксации)
 
