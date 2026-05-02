@@ -5,7 +5,8 @@ import { rootRoute } from './routes/__rootRoute'
 import { loginRoute } from './routes/login'
 import { registerRoute } from './routes/register'
 import { onboardingRoute } from './routes/onboarding'
-import { learnLangLibraryStubRoute } from './routes/learn-stub'
+import { learnLangRoute } from './routes/learn.$lang'
+import { learnLibraryRoute } from './routes/learn.$lang.library'
 
 export { rootRoute } from './routes/__rootRoute'
 export type { RouterContext } from './routes/__rootRoute'
@@ -21,5 +22,5 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   registerRoute,
   onboardingRoute,
-  learnLangLibraryStubRoute,
+  learnLangRoute.addChildren([learnLibraryRoute]),
 ])
