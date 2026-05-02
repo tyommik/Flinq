@@ -20,6 +20,7 @@ from flinq.core.db import Base
 # Import all modules here so Alembic autogenerate sees their ORM models.
 # As new modules are added, import them below.
 from flinq.modules.identity import models as _identity_models  # noqa: F401
+from flinq.modules.lesson_library import models as _lesson_library_models  # noqa: F401
 
 config = context.config
 
