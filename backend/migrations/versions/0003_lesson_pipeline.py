@@ -27,9 +27,7 @@ def upgrade() -> None:
     )
     op.add_column(
         "lessons",
-        sa.Column(
-            "current_source_version", sa.Integer(), nullable=False, server_default="1"
-        ),
+        sa.Column("current_source_version", sa.Integer(), nullable=False, server_default="1"),
     )
 
     op.create_table(
@@ -89,9 +87,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["lesson_id"], ["lessons.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["segment_id"], ["lesson_segments.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "lesson_id", "ordinal_in_lesson", name="uq_occurrence_lesson_ordinal"
-        ),
+        sa.UniqueConstraint("lesson_id", "ordinal_in_lesson", name="uq_occurrence_lesson_ordinal"),
     )
     op.create_index(
         op.f("ix_lesson_token_occurrences_lesson_id"),
