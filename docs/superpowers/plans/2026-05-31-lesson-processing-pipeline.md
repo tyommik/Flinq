@@ -4,7 +4,7 @@
 
 **Goal:** Turn imported lesson text into persisted lesson *facts* — segments and token occurrences — produced by an asynchronous worker import job, so token-level features can be built on top.
 
-**Architecture:** `POST /api/lessons` creates a `processing` lesson + a `lesson_sources` row + a `lesson_import_jobs` row, enqueues a taskiq job, and returns `202 {id, status}`. The job (also callable directly as a plain async function) NFC-normalizes the text, splits it into paragraphs then sentences, tokenizes each sentence, bulk-inserts `lesson_segments` and `lesson_token_occurrences`, sets counts, and flips the lesson to `ready` — or `failed` with an `error_message`. Retry is idempotent: facts are deleted and recreated, allowed only while the lesson is not yet `ready`. Tokenization/segmentation are pure functions behind a `Segmenter` protocol.
+**Architecture:** `POST /api/lessons` creates a `processing` lesson + a `lesson_sources` row + a `lesson_import_jobs` row, enqueues a taskiq job, and returns `202 {id, status}`. The job (also callable directly as a plain async function) NFC-normalizes the text, splits it into paragraphs then sentences, tokenizes each sentence, bulk-inserts `lesson_segments` and `lesson_token_occurrences`, sets counts, and flips the lesson to `ready` — or `failed` with an `error_message`. Retry is idempotent: facts are deleted and recreated, allowed only while the lesson is not yet `ready`. The lesson row is locked `FOR UPDATE` and the worker runs a specific `job_id` (not "the latest job"), so duplicate/concurrent delivery serializes instead of double-processing; if the queue is unavailable the request marks the lesson `failed` and returns 503 rather than stranding it in `processing`. Tokenization/segmentation are pure functions behind a `Segmenter` protocol.
 
 **Tech Stack:** Python 3.13, async SQLAlchemy 2 (`Mapped[...]`), Alembic, Pydantic v2, taskiq (existing Redis/InMemory broker), Postgres (asyncpg), pytest + testcontainers, loguru. Languages: `en`, `ru`, `pt`. Branch: `feat/flq-1-lesson-pipeline`.
 
@@ -1143,13 +1143,25 @@ class LessonRepo:
     async def get_lesson(self, lesson_id: uuid.UUID) -> Lesson | None:
         return await self.session.get(Lesson, lesson_id)
 
-    async def latest_job(self, lesson_id: uuid.UUID) -> LessonImportJob | None:
-        stmt = (
-            select(LessonImportJob)
-            .where(LessonImportJob.lesson_id == lesson_id)
-            .order_by(LessonImportJob.created_at.desc())
-            .limit(1)
-        )
+    async def lock_lesson(self, lesson_id: uuid.UUID) -> Lesson | None:
+        """Fetch a lesson with a row-level lock (FOR UPDATE).
+
+        Serializes concurrent/duplicate import runs for the same lesson so the
+        delete-and-recreate of facts cannot interleave (review finding #2).
+        """
+        stmt = select(Lesson).where(Lesson.id == lesson_id).with_for_update()
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_job(self, job_id: uuid.UUID) -> LessonImportJob | None:
+        return await self.session.get(LessonImportJob, job_id)
+
+    async def lock_job(self, job_id: uuid.UUID) -> LessonImportJob | None:
+        """Fetch an import job with a row-level lock (FOR UPDATE).
+
+        Lets the worker enforce a single pending/running transition even under
+        duplicate task delivery (review finding #2).
+        """
+        stmt = select(LessonImportJob).where(LessonImportJob.id == job_id).with_for_update()
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def delete_facts(self, lesson_id: uuid.UUID) -> None:
@@ -1174,6 +1186,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1224,17 +1237,42 @@ async def create_lesson_for_import(
     return lesson, job.id
 
 
-async def process_lesson_import(session: AsyncSession, lesson_id: uuid.UUID) -> None:
-    """Segment + tokenize a lesson's text into facts, then mark it ready.
+async def mark_import_failed(
+    session: AsyncSession,
+    *,
+    lesson_id: uuid.UUID,
+    job_id: uuid.UUID,
+    error: str,
+) -> None:
+    """Flip a lesson + its import job to failed (used when enqueue cannot happen).
 
-    Idempotent: existing facts are deleted before re-insert. Allowed only while
-    the lesson status is in {processing, failed}; a ready lesson is refused.
+    Never downgrades a lesson that already reached ready. Caller commits.
     """
     repo = LessonRepo(session)
     lesson = await repo.get_lesson(lesson_id)
+    if lesson is not None and lesson.status != "ready":
+        lesson.status = "failed"
+    job = await repo.get_job(job_id)
+    if job is not None:
+        job.status = "failed"
+        job.error_message = error
+        job.finished_at = datetime.now(timezone.utc)
+    await session.flush()
+
+
+async def process_lesson_import(session: AsyncSession, lesson_id: uuid.UUID) -> None:
+    """Segment + tokenize a lesson's text into facts, then mark it ready.
+
+    Idempotent and concurrency-safe: the lesson row is locked FOR UPDATE and its
+    status re-checked under the lock, so duplicate/concurrent runs serialize and
+    a ready lesson is never mutated. Existing facts are deleted before re-insert.
+    Allowed only while the lesson status is in {processing, failed}.
+    """
+    repo = LessonRepo(session)
+    lesson = await repo.lock_lesson(lesson_id)  # FOR UPDATE: serialize concurrent runs
     if lesson is None:
         raise LessonNotFound(str(lesson_id))
-    if lesson.status not in _PROCESSABLE:
+    if lesson.status not in _PROCESSABLE:  # re-checked while holding the row lock
         raise LessonNotProcessable(f"lesson {lesson_id} is {lesson.status}")
 
     await repo.delete_facts(lesson_id)
@@ -1310,16 +1348,17 @@ git commit -m "feat(lessons): add idempotent import service (segments + occurren
 Create `backend/tests/modules/lesson_library/test_import_job.py`:
 
 ```python
-"""Worker job: success transitions to ready/done, errors to failed (AC#4)."""
+"""Worker job: success → ready/done, errors → failed, duplicate delivery no-op (AC#4)."""
 
 from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.modules.identity.repo import UserRepo
-from flinq.modules.lesson_library.models import Lesson, LessonImportJob
+from flinq.modules.lesson_library.models import Lesson, LessonImportJob, LessonTokenOccurrence
 from flinq.modules.lesson_library.repo import LessonRepo
 from flinq.worker.tasks import run_lesson_import
 
@@ -1345,10 +1384,19 @@ async def _seed(session: AsyncSession, raw_text: str) -> tuple[uuid.UUID, uuid.U
     return lesson.id, job.id
 
 
+async def _occ_count(session: AsyncSession, lesson_id: uuid.UUID) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(LessonTokenOccurrence)
+        .where(LessonTokenOccurrence.lesson_id == lesson_id)
+    )
+    return (await session.execute(stmt)).scalar_one()
+
+
 async def test_job_success_sets_ready_and_done(db_session: AsyncSession) -> None:
     lesson_id, job_id = await _seed(db_session, "Olá mundo. Tudo bem?")
 
-    await run_lesson_import(lesson_id)
+    await run_lesson_import(lesson_id, job_id)
 
     refreshed = await db_session.get(Lesson, lesson_id)
     job = await db_session.get(LessonImportJob, job_id)
@@ -1368,13 +1416,28 @@ async def test_job_failure_sets_failed_and_records_error(
     # Force the processing step to raise.
     monkeypatch.setattr("flinq.worker.tasks.process_lesson_import", _boom)
 
-    await run_lesson_import(lesson_id)
+    await run_lesson_import(lesson_id, job_id)
 
     refreshed = await db_session.get(Lesson, lesson_id)
     job = await db_session.get(LessonImportJob, job_id)
     assert refreshed is not None and refreshed.status == "failed"
     assert job is not None and job.status == "failed"
     assert job.error_message and "segmentation exploded" in job.error_message
+
+
+async def test_duplicate_delivery_is_a_noop(db_session: AsyncSession) -> None:
+    """A second delivery of the same (done) job must not double the facts (review #2)."""
+    lesson_id, job_id = await _seed(db_session, "Olá mundo. Tudo bem?")
+
+    await run_lesson_import(lesson_id, job_id)
+    first = await _occ_count(db_session, lesson_id)
+
+    # Re-deliver the same job id: job is already done → guarded no-op.
+    await run_lesson_import(lesson_id, job_id)
+
+    assert await _occ_count(db_session, lesson_id) == first
+    job = await db_session.get(LessonImportJob, job_id)
+    assert job is not None and job.status == "done"
 ```
 
 Note: the tests `commit` the seed so `run_lesson_import` (which opens its own `session_scope`) sees the rows. After `run_lesson_import`, `db_session.get` re-reads from the same DB; if SQLAlchemy returns a cached instance, call `await db_session.refresh(obj)` — but a fresh `get` after another session committed will read current DB state because `db_session` has not loaded these ids yet.
@@ -1399,51 +1462,55 @@ from flinq.modules.lesson_library.service import LessonNotProcessable, process_l
 Then append the following to the file (before the `scheduler = ...` line is fine; keep `scheduler` last):
 
 ```python
-async def run_lesson_import(lesson_id: uuid.UUID) -> None:
-    """Process a lesson import end-to-end, managing its import-job row.
+async def run_lesson_import(lesson_id: uuid.UUID, job_id: uuid.UUID) -> None:
+    """Process an import for an EXACT job, end-to-end. Retry/duplicate-safe.
 
     Plain async function so tests and a future synchronous path can call it
-    without a running worker. The taskiq task simply wraps this.
+    without a running worker. The taskiq task simply wraps this. The job row is
+    locked FOR UPDATE and only a pending/running job is run, so duplicate task
+    delivery becomes a no-op instead of double-processing (review finding #2).
     """
     async with session_scope() as session:
         repo = LessonRepo(session)
-        job = await repo.latest_job(lesson_id)
-        if job is not None:
-            job.status = "running"
-            job.started_at = datetime.now(timezone.utc)
-            await session.flush()
+        job = await repo.lock_job(job_id)  # FOR UPDATE: serialize deliveries
+        if job is None:
+            logger.warning("run_lesson_import: job {} not found", job_id)
+            return
+        if job.status not in {"pending", "running"}:
+            logger.info("run_lesson_import: job {} already {}; skipping", job_id, job.status)
+            return
+        job.status = "running"
+        job.started_at = datetime.now(timezone.utc)
+        await session.flush()
         try:
             await process_lesson_import(session, lesson_id)
         except LessonNotProcessable as exc:
             logger.info("run_lesson_import: skipped {} ({})", lesson_id, exc)
-            if job is not None:
-                job.status = "done"
-                job.finished_at = datetime.now(timezone.utc)
+            job.status = "done"
+            job.finished_at = datetime.now(timezone.utc)
             return
         except Exception as exc:  # noqa: BLE001 - record any failure on the job
             logger.exception("run_lesson_import failed for {}", lesson_id)
             lesson = await repo.get_lesson(lesson_id)
             if lesson is not None:
                 lesson.status = "failed"
-            if job is not None:
-                job.status = "failed"
-                job.error_message = str(exc)
-                job.finished_at = datetime.now(timezone.utc)
-            return
-        if job is not None:
-            job.status = "done"
+            job.status = "failed"
+            job.error_message = str(exc)
             job.finished_at = datetime.now(timezone.utc)
+            return
+        job.status = "done"
+        job.finished_at = datetime.now(timezone.utc)
 
 
 @broker.task
-async def import_lesson_task(lesson_id: str) -> None:
-    """Taskiq entry point: process a lesson import by id."""
-    await run_lesson_import(uuid.UUID(lesson_id))
+async def import_lesson_task(lesson_id: str, job_id: str) -> None:
+    """Taskiq entry point: process a lesson import for an exact job."""
+    await run_lesson_import(uuid.UUID(lesson_id), uuid.UUID(job_id))
 
 
-async def enqueue_lesson_import(lesson_id: uuid.UUID) -> None:
+async def enqueue_lesson_import(lesson_id: uuid.UUID, job_id: uuid.UUID) -> None:
     """Enqueue the import task. Patched in tests to isolate the API handler."""
-    await import_lesson_task.kiq(str(lesson_id))
+    await import_lesson_task.kiq(str(lesson_id), str(job_id))
 ```
 
 Important: `session_scope()` commits on successful exit and rolls back on exception. Because the failure path **catches** the exception and returns normally, the `failed` status and `error_message` are committed (not rolled back). Do not let the exception propagate out of `session_scope`.
@@ -1451,7 +1518,7 @@ Important: `session_scope()` commits on successful exit and rolls back on except
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/modules/lesson_library/test_import_job.py -v`
-Expected: PASS (2 tests).
+Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -1501,10 +1568,10 @@ async def _register_and_onboard(c: AsyncClient, email: str, lang: str = "pt") ->
 
 
 async def test_post_returns_202_processing_and_enqueues(monkeypatch) -> None:
-    calls: list[str] = []
+    calls: list[tuple[str, str]] = []
 
-    async def _spy(lesson_id) -> None:
-        calls.append(str(lesson_id))
+    async def _spy(lesson_id, job_id) -> None:
+        calls.append((str(lesson_id), str(job_id)))
 
     monkeypatch.setattr("flinq.api.lessons.enqueue_lesson_import", _spy)
 
@@ -1525,7 +1592,10 @@ async def test_post_returns_202_processing_and_enqueues(monkeypatch) -> None:
         body = r.json()
         assert body["status"] == "processing"
         assert "id" in body
-        assert calls == [body["id"]]
+        # Enqueued exactly once, for the created lesson (job id is non-empty).
+        assert len(calls) == 1
+        assert calls[0][0] == body["id"]
+        assert calls[0][1]
 
         # Poll endpoint returns the current status.
         r2 = await c.get(f"/api/lessons/{body['id']}")
@@ -1533,8 +1603,38 @@ async def test_post_returns_202_processing_and_enqueues(monkeypatch) -> None:
         assert r2.json()["status"] == "processing"
 
 
+async def test_enqueue_failure_marks_failed_and_returns_503(monkeypatch) -> None:
+    """If the queue is down, the lesson must not be stranded in processing (review #1)."""
+
+    async def _boom(lesson_id, job_id) -> None:
+        raise RuntimeError("redis down")
+
+    monkeypatch.setattr("flinq.api.lessons.enqueue_lesson_import", _boom)
+
+    transport = ASGITransport(app=create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        csrf = await _register_and_onboard(c, "import-enqueue-fail@example.com")
+        r = await c.post(
+            "/api/lessons",
+            json={
+                "title": "Stuck?",
+                "language_code": "pt",
+                "raw_text": "Olá mundo.",
+                "visibility": "private",
+            },
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert r.status_code == 503
+
+        # The lesson exists but is failed (not stuck in processing).
+        r2 = await c.get("/api/lessons?lang=pt")
+        assert r2.status_code == 200
+        statuses = {item["title"]: item["status"] for item in r2.json()["items"]}
+        assert statuses.get("Stuck?") == "failed"
+
+
 async def test_get_unknown_lesson_returns_404(monkeypatch) -> None:
-    async def _spy(lesson_id) -> None:
+    async def _spy(lesson_id, job_id) -> None:
         return None
 
     monkeypatch.setattr("flinq.api.lessons.enqueue_lesson_import", _spy)
@@ -1593,6 +1693,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.core.db import get_session
@@ -1653,7 +1754,7 @@ async def create_lesson(
     session: AsyncSession = Depends(get_session),
 ) -> LessonCreatedResponse:
     user_id = _require_user(request)
-    lesson, _job_id = await service.create_lesson_for_import(
+    lesson, job_id = await service.create_lesson_for_import(
         owner_user_id=user_id,
         title=body.title,
         language_code=body.language_code,
@@ -1661,10 +1762,24 @@ async def create_lesson(
         visibility=body.visibility,
         repo=LessonRepo(session),
     )
+    lesson_id = lesson.id
     # Commit so the background worker (which opens its own session) sees the rows.
     await session.commit()
-    await enqueue_lesson_import(lesson.id)
-    return LessonCreatedResponse(id=lesson.id, status=lesson.status)
+    # If the queue is unavailable, do NOT strand the lesson in `processing`
+    # forever (review finding #1): mark it failed and surface a 503 so the
+    # client can retry, instead of a spinner that never resolves.
+    try:
+        await enqueue_lesson_import(lesson_id, job_id)
+    except Exception as exc:  # noqa: BLE001 - any enqueue/transport failure
+        logger.warning("enqueue_lesson_import failed for {}: {}", lesson_id, exc)
+        await service.mark_import_failed(
+            session, lesson_id=lesson_id, job_id=job_id, error=f"enqueue failed: {exc}"
+        )
+        await session.commit()
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "could not queue lesson import"
+        ) from exc
+    return LessonCreatedResponse(id=lesson_id, status=lesson.status)
 
 
 @router.get("/{lesson_id}", response_model=LessonStatusResponse)
