@@ -83,16 +83,49 @@ class Segmenter(Protocol):
 # Per-language abbreviations (lowercased, without the trailing period).
 _ABBREVIATIONS: dict[str, frozenset[str]] = {
     "en": frozenset(
-        {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc",
-         "inc", "ltd", "co", "no", "fig", "e.g", "i.e", "approx"}
+        {
+            "mr",
+            "mrs",
+            "ms",
+            "dr",
+            "prof",
+            "sr",
+            "jr",
+            "st",
+            "vs",
+            "etc",
+            "inc",
+            "ltd",
+            "co",
+            "no",
+            "fig",
+            "e.g",
+            "i.e",
+            "approx",
+        }
     ),
     "ru": frozenset(
-        {"т", "д", "п", "г", "гг", "стр", "рис", "см", "им", "др", "пр",
-         "тыс", "руб", "коп", "ул", "обл"}
+        {
+            "т",
+            "д",
+            "п",
+            "г",
+            "гг",
+            "стр",
+            "рис",
+            "см",
+            "им",
+            "др",
+            "пр",
+            "тыс",
+            "руб",
+            "коп",
+            "ул",
+            "обл",
+        }
     ),
     "pt": frozenset(
-        {"sr", "sra", "dr", "dra", "prof", "profa", "ex", "av", "núm",
-         "pág", "etc", "ltda", "esq"}
+        {"sr", "sra", "dr", "dra", "prof", "profa", "ex", "av", "núm", "pág", "etc", "ltda", "esq"}
     ),
 }
 
