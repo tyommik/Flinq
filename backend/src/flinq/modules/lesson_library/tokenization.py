@@ -132,9 +132,9 @@ _ABBREVIATIONS: dict[str, frozenset[str]] = {
 _PARA_SPLIT_RE = re.compile(r"\n[ \t]*\n+")
 _SENT_PUNCT_RE = re.compile(r"[.!?…]+")
 _LAST_WORD_RE = re.compile(r"(\w+)$", re.UNICODE)
-# Characters that may begin a new sentence (used after a boundary dot/punct).
-# Includes: left curly double quote (“), left curly single quote (‘),
-# guillemet («), straight double quote, open paren, hyphen, em dash (—).
+# Characters that may begin a new sentence (used after a boundary dot/punct):
+# U+201C left double quote, U+2018 left single quote, U+00AB guillemet,
+# straight double quote, straight single quote, open paren, hyphen, U+2014 em dash.
 _SENTENCE_START_CHARS = "\u201c\u2018\u00ab\"'(-\u2014"
 
 
