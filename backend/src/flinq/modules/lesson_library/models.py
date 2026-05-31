@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import (
     Boolean,
@@ -156,7 +156,7 @@ class LessonImportJob(Base):
     )
     job_type: Mapped[str] = mapped_column(String(32), nullable=False, default="import_text")
     status: Mapped[JobStatus] = mapped_column(String(16), nullable=False, default="pending")
-    payload_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    payload_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
