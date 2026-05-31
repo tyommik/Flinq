@@ -42,3 +42,21 @@ class LessonListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class LessonCreatedResponse(BaseModel):
+    id: uuid.UUID
+    status: str
+
+
+class LessonStatusResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    language_code: str
+    status: str
+    word_count: int
+    segment_count: int
+    visibility: str
+    created_at: datetime
