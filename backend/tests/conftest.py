@@ -55,6 +55,7 @@ def _redis_setup(_redis_container: RedisContainer, monkeypatch_session: pytest.M
 async def _init_schema(_db_setup: None, _redis_setup: None) -> AsyncIterator[None]:
     from flinq.core.db import Base
     from flinq.modules.identity import models as _identity_models  # noqa: F401
+    from flinq.modules.lesson_library import models as _lesson_models  # noqa: F401
 
     settings = get_settings()
     engine = init_engine(settings)

@@ -30,6 +30,13 @@ _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
+def get_engine() -> AsyncEngine:
+    """Return the initialized async engine (raises if not initialized)."""
+    if _engine is None:
+        raise RuntimeError("Engine not initialized; call init_engine() first.")
+    return _engine
+
+
 def init_engine(settings: Settings) -> AsyncEngine:
     """Create the engine. Idempotent — safe to call multiple times."""
     global _engine, _session_factory  # noqa: PLW0603
