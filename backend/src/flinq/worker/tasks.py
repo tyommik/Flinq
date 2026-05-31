@@ -12,7 +12,10 @@ from taskiq.schedule_sources import LabelScheduleSource
 from flinq.core.db import session_scope
 from flinq.modules.identity.repo import SessionRepo
 from flinq.modules.lesson_library.repo import LessonRepo
-from flinq.modules.lesson_library.service import LessonNotProcessable, process_lesson_import
+from flinq.modules.lesson_library.service import (
+    LessonNotProcessableError,
+    process_lesson_import,
+)
 from flinq.worker.broker import broker
 
 
@@ -55,7 +58,7 @@ async def run_lesson_import(lesson_id: uuid.UUID, job_id: uuid.UUID) -> None:
         await session.flush()
         try:
             await process_lesson_import(session, lesson_id)
-        except LessonNotProcessable as exc:
+        except LessonNotProcessableError as exc:
             logger.info("run_lesson_import: skipped {} ({})", lesson_id, exc)
             job.status = "done"
             job.finished_at = datetime.now(UTC)

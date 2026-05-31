@@ -91,5 +91,5 @@ async def test_ready_lesson_is_not_reprocessed(db_session: AsyncSession) -> None
     lesson_id = await _make_processing_lesson(db_session)
     await service.process_lesson_import(db_session, lesson_id)
 
-    with pytest.raises(service.LessonNotProcessable):
+    with pytest.raises(service.LessonNotProcessableError):
         await service.process_lesson_import(db_session, lesson_id)

@@ -91,9 +91,7 @@ class LessonSource(Base):
 
 class LessonSegment(Base):
     __tablename__ = "lesson_segments"
-    __table_args__ = (
-        UniqueConstraint("lesson_id", "ordinal", name="uq_segment_lesson_ordinal"),
-    )
+    __table_args__ = (UniqueConstraint("lesson_id", "ordinal", name="uq_segment_lesson_ordinal"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lesson_id: Mapped[uuid.UUID] = mapped_column(
@@ -103,7 +101,9 @@ class LessonSegment(Base):
         index=True,
     )
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
-    segment_type: Mapped[SegmentType] = mapped_column(String(16), nullable=False, default="sentence")
+    segment_type: Mapped[SegmentType] = mapped_column(
+        String(16), nullable=False, default="sentence"
+    )
     text: Mapped[str] = mapped_column(Text, nullable=False)
     start_char_offset: Mapped[int] = mapped_column(Integer, nullable=False)
     end_char_offset: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -112,9 +112,7 @@ class LessonSegment(Base):
 class LessonTokenOccurrence(Base):
     __tablename__ = "lesson_token_occurrences"
     __table_args__ = (
-        UniqueConstraint(
-            "lesson_id", "ordinal_in_lesson", name="uq_occurrence_lesson_ordinal"
-        ),
+        UniqueConstraint("lesson_id", "ordinal_in_lesson", name="uq_occurrence_lesson_ordinal"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

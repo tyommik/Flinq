@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,11 +21,11 @@ from flinq.modules.lesson_library.tokenization import RegexSegmenter, tokenize
 _PROCESSABLE = {"processing", "failed"}
 
 
-class LessonNotFound(Exception):
+class LessonNotFoundError(Exception):
     """Raised when a lesson id does not exist."""
 
 
-class LessonNotProcessable(Exception):
+class LessonNotProcessableError(Exception):
     """Raised when import is attempted on a lesson that is not re-runnable."""
 
 
@@ -80,7 +80,7 @@ async def mark_import_failed(
     if job is not None:
         job.status = "failed"
         job.error_message = error
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
     await session.flush()
 
 
@@ -95,9 +95,9 @@ async def process_lesson_import(session: AsyncSession, lesson_id: uuid.UUID) -> 
     repo = LessonRepo(session)
     lesson = await repo.lock_lesson(lesson_id)  # FOR UPDATE: serialize concurrent runs
     if lesson is None:
-        raise LessonNotFound(str(lesson_id))
+        raise LessonNotFoundError(str(lesson_id))
     if lesson.status not in _PROCESSABLE:  # re-checked while holding the row lock
-        raise LessonNotProcessable(f"lesson {lesson_id} is {lesson.status}")
+        raise LessonNotProcessableError(f"lesson {lesson_id} is {lesson.status}")
 
     await repo.delete_facts(lesson_id)
 
@@ -119,9 +119,7 @@ async def process_lesson_import(session: AsyncSession, lesson_id: uuid.UUID) -> 
             session.add(segment)
             await session.flush()  # assign segment.id for the occurrence FK
 
-            for seg_idx, tok in enumerate(
-                tokenize(sentence.text, base_offset=sentence.start)
-            ):
+            for seg_idx, tok in enumerate(tokenize(sentence.text, base_offset=sentence.start)):
                 session.add(
                     LessonTokenOccurrence(
                         lesson_id=lesson_id,
