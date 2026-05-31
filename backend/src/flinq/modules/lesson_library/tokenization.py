@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from typing import Protocol
 
 # A word: a run of word chars that may contain internal hyphens/apostrophes,
 # OR a single word char, OR a run of punctuation (non-word, non-space).
@@ -57,3 +58,125 @@ def tokenize(text: str, *, base_offset: int = 0) -> list[Token]:
             )
         )
     return tokens
+
+
+# ---------------------------------------------------------------------------
+# Sentence / paragraph segmentation
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Span:
+    text: str
+    start: int
+    end: int
+
+
+class Segmenter(Protocol):
+    """Splits text into paragraphs and sentences with absolute offsets."""
+
+    def split_paragraphs(self, text: str) -> list[Span]: ...
+
+    def split_sentences(self, paragraph: str, *, base_offset: int = 0) -> list[Span]: ...
+
+
+# Per-language abbreviations (lowercased, without the trailing period).
+_ABBREVIATIONS: dict[str, frozenset[str]] = {
+    "en": frozenset(
+        {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc",
+         "inc", "ltd", "co", "no", "fig", "e.g", "i.e", "approx"}
+    ),
+    "ru": frozenset(
+        {"т", "д", "п", "г", "гг", "стр", "рис", "см", "им", "др", "пр",
+         "тыс", "руб", "коп", "ул", "обл"}
+    ),
+    "pt": frozenset(
+        {"sr", "sra", "dr", "dra", "prof", "profa", "ex", "av", "núm",
+         "pág", "etc", "ltda", "esq"}
+    ),
+}
+
+_PARA_SPLIT_RE = re.compile(r"\n[ \t]*\n+")
+_SENT_PUNCT_RE = re.compile(r"[.!?…]+")
+_LAST_WORD_RE = re.compile(r"(\w+)$", re.UNICODE)
+# Characters that may begin a new sentence (used after a boundary dot/punct).
+# Includes: left curly double quote (“), left curly single quote (‘),
+# guillemet («), straight double quote, open paren, hyphen, em dash (—).
+_SENTENCE_START_CHARS = "\u201c\u2018\u00ab\"'(-\u2014"
+
+
+def _trim_to_span(chunk: str, start: int) -> Span:
+    """Strip surrounding whitespace from chunk and return a Span with offsets."""
+    stripped = chunk.strip()
+    lead = len(chunk) - len(chunk.lstrip())
+    real_start = start + lead
+    return Span(text=stripped, start=real_start, end=real_start + len(stripped))
+
+
+class RegexSegmenter:
+    """Rule-based segmenter for en/ru/pt. Swap-in for the Segmenter protocol."""
+
+    def __init__(self, lang: str) -> None:
+        self.lang = lang
+        self._abbrevs = _ABBREVIATIONS.get(lang, frozenset())
+
+    def split_paragraphs(self, text: str) -> list[Span]:
+        spans: list[Span] = []
+        pos = 0
+        for m in _PARA_SPLIT_RE.finditer(text):
+            chunk = text[pos : m.start()]
+            if chunk.strip():
+                spans.append(_trim_to_span(chunk, pos))
+            pos = m.end()
+        tail = text[pos:]
+        if tail.strip():
+            spans.append(_trim_to_span(tail, pos))
+        return spans
+
+    def split_sentences(self, paragraph: str, *, base_offset: int = 0) -> list[Span]:
+        spans: list[Span] = []
+        n = len(paragraph)
+        start = 0
+        for m in _SENT_PUNCT_RE.finditer(paragraph):
+            end = m.end()
+            after = paragraph[end : end + 1]
+            # Boundary candidate only when followed by whitespace or end-of-text.
+            if after and not after.isspace():
+                continue
+            # Skip abbreviations and single-letter initials right before the dot.
+            prefix = paragraph[start : m.start()]
+            lw = _LAST_WORD_RE.search(prefix)
+            if lw is not None:
+                word = lw.group(1)
+                is_abbrev = word.lower() in self._abbrevs or len(word) == 1
+                if is_abbrev:
+                    # For compound abbreviations like "т.д." the last component
+                    # is preceded by a dot (e.g. prefix ends in "т.д").  In that
+                    # case we only suppress the split when the following word
+                    # does NOT start with an uppercase letter — otherwise we let
+                    # the sentence-start check below decide.
+                    in_compound = lw.start() > 0 and prefix[lw.start() - 1] == "."
+                    if not in_compound:
+                        continue
+                    # Compound abbreviation: look ahead to see if what follows
+                    # is a real sentence start (uppercase).  If not, suppress.
+                    j_peek = end
+                    while j_peek < n and paragraph[j_peek].isspace():
+                        j_peek += 1
+                    if j_peek >= n or not paragraph[j_peek].isupper():
+                        continue
+                    # Falls through to the normal sentence-start check below.
+            # Require the next non-space char to look like a sentence start.
+            j = end
+            while j < n and paragraph[j].isspace():
+                j += 1
+            if j < n:
+                nxt = paragraph[j]
+                if not (nxt.isupper() or nxt.isdigit() or nxt in _SENTENCE_START_CHARS):
+                    continue
+            spans.append(_trim_to_span(paragraph[start:end], base_offset + start))
+            start = end
+        tail = paragraph[start:]
+        if tail.strip():
+            spans.append(_trim_to_span(tail, base_offset + start))
+        return spans
