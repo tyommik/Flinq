@@ -1,3 +1,4 @@
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from flinq.main import create_app
@@ -23,14 +24,14 @@ async def _register_and_onboard(c: AsyncClient, email: str, lang: str = "pt") ->
     return csrf
 
 
-async def test_create_and_list_lesson(monkeypatch) -> None:
+async def test_create_and_list_lesson(monkeypatch: pytest.MonkeyPatch) -> None:
     from flinq.core.db import session_scope
     from flinq.modules.lesson_library import service
 
     # In env=test the InMemoryBroker runs .kiq() inline, which would process the
     # lesson to `ready` before we can drive it ourselves. Stub the enqueue so the
     # lesson stays `processing`, then run the import explicitly below.
-    async def _noop(lesson_id, job_id) -> None:
+    async def _noop(lesson_id: object, job_id: object) -> None:
         return None
 
     monkeypatch.setattr("flinq.api.lessons.enqueue_lesson_import", _noop)

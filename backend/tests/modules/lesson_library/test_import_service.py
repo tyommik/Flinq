@@ -39,7 +39,11 @@ async def _make_processing_lesson(session: AsyncSession) -> uuid.UUID:
     return lesson.id
 
 
-async def _count(session: AsyncSession, model, lesson_id: uuid.UUID) -> int:
+async def _count(
+    session: AsyncSession,
+    model: type[LessonSegment] | type[LessonTokenOccurrence],
+    lesson_id: uuid.UUID,
+) -> int:
     stmt = select(func.count()).select_from(model).where(model.lesson_id == lesson_id)
     return (await session.execute(stmt)).scalar_one()
 

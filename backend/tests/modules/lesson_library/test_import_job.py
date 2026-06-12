@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,11 +57,11 @@ async def test_job_success_sets_ready_and_done(db_session: AsyncSession) -> None
 
 
 async def test_job_failure_sets_failed_and_records_error(
-    db_session: AsyncSession, monkeypatch
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     lesson_id, job_id = await _seed(db_session, "anything")
 
-    def _boom(*_args, **_kwargs):
+    def _boom(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("segmentation exploded")
 
     monkeypatch.setattr("flinq.worker.tasks.process_lesson_import", _boom)

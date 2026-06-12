@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from flinq.main import create_app
@@ -23,10 +24,10 @@ async def _register_and_onboard(c: AsyncClient, email: str, lang: str = "pt") ->
     return csrf
 
 
-async def test_post_returns_202_processing_and_enqueues(monkeypatch) -> None:
+async def test_post_returns_202_processing_and_enqueues(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, str]] = []
 
-    async def _spy(lesson_id, job_id) -> None:
+    async def _spy(lesson_id: object, job_id: object) -> None:
         calls.append((str(lesson_id), str(job_id)))
 
     monkeypatch.setattr("flinq.api.lessons.enqueue_lesson_import", _spy)
@@ -57,10 +58,12 @@ async def test_post_returns_202_processing_and_enqueues(monkeypatch) -> None:
         assert r2.json()["status"] == "processing"
 
 
-async def test_enqueue_failure_marks_failed_and_returns_503(monkeypatch) -> None:
+async def test_enqueue_failure_marks_failed_and_returns_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """If the queue is down, the lesson must not be stranded in processing (review #1)."""
 
-    async def _boom(lesson_id, job_id) -> None:
+    async def _boom(lesson_id: object, job_id: object) -> None:
         raise RuntimeError("redis down")
 
     monkeypatch.setattr("flinq.api.lessons.enqueue_lesson_import", _boom)
@@ -86,8 +89,8 @@ async def test_enqueue_failure_marks_failed_and_returns_503(monkeypatch) -> None
         assert statuses.get("Stuck?") == "failed"
 
 
-async def test_get_unknown_lesson_returns_404(monkeypatch) -> None:
-    async def _spy(lesson_id, job_id) -> None:
+async def test_get_unknown_lesson_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _spy(lesson_id: object, job_id: object) -> None:
         return None
 
     monkeypatch.setattr("flinq.api.lessons.enqueue_lesson_import", _spy)

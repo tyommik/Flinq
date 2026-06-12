@@ -73,9 +73,7 @@ async def delete_me(
     user_id = getattr(request.state, "user_id", None)
     if user_id is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
-    await service.delete_me(
-        user_id, password=body.password, user_repo=UserRepo(session)
-    )
+    await service.delete_me(user_id, password=body.password, user_repo=UserRepo(session))
     response.delete_cookie(SESSION_COOKIE)
     response.delete_cookie(CSRF_COOKIE)
     return {"ok": True}

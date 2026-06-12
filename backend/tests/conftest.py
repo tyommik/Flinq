@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 import redis.asyncio as aioredis
@@ -22,29 +22,31 @@ os.environ.setdefault("FLINQ_SECRET_KEY", "test-secret-key-for-pytest")
 
 
 @pytest.fixture(scope="session")
-def monkeypatch_session():  # type: ignore[return]
-    from _pytest.monkeypatch import MonkeyPatch
-
-    mp = MonkeyPatch()
+def monkeypatch_session() -> Iterator[pytest.MonkeyPatch]:
+    mp = pytest.MonkeyPatch()
     yield mp
     mp.undo()
 
 
 @pytest.fixture(scope="session")
-def _pg_container():  # type: ignore[return]
+def _pg_container() -> Iterator[PostgresContainer]:  # pyright: ignore[reportUnusedFunction] — fixture, injected by name
     with PostgresContainer("postgres:16-alpine", driver="asyncpg") as pg:
         yield pg
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _db_setup(_pg_container: PostgresContainer, monkeypatch_session: pytest.MonkeyPatch) -> None:
+def _db_setup(  # pyright: ignore[reportUnusedFunction] — autouse fixture
+    _pg_container: PostgresContainer, monkeypatch_session: pytest.MonkeyPatch
+) -> None:
     url = _pg_container.get_connection_url()  # already asyncpg-formatted
     monkeypatch_session.setenv("FLINQ_DATABASE_URL", url)
     get_settings.cache_clear()
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _redis_setup(_redis_container: RedisContainer, monkeypatch_session: pytest.MonkeyPatch) -> None:
+def _redis_setup(  # pyright: ignore[reportUnusedFunction] — autouse fixture
+    _redis_container: RedisContainer, monkeypatch_session: pytest.MonkeyPatch
+) -> None:
     host = _redis_container.get_container_host_ip()
     port = int(_redis_container.get_exposed_port(6379))
     monkeypatch_session.setenv("FLINQ_REDIS_URL", f"redis://{host}:{port}/0")
@@ -52,10 +54,18 @@ def _redis_setup(_redis_container: RedisContainer, monkeypatch_session: pytest.M
 
 
 @pytest.fixture(scope="session", autouse=True)
-async def _init_schema(_db_setup: None, _redis_setup: None) -> AsyncIterator[None]:
+async def _init_schema(  # pyright: ignore[reportUnusedFunction] — autouse fixture
+    _db_setup: None, _redis_setup: None
+) -> AsyncIterator[None]:
     from flinq.core.db import Base
-    from flinq.modules.identity import models as _identity_models  # noqa: F401
-    from flinq.modules.lesson_library import models as _lesson_models  # noqa: F401
+
+    # Side-effect imports: register ORM models on Base.metadata before create_all.
+    from flinq.modules.identity import (
+        models as _identity_models,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    )
+    from flinq.modules.lesson_library import (
+        models as _lesson_models,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    )
 
     settings = get_settings()
     engine = init_engine(settings)
@@ -91,7 +101,7 @@ async def client() -> AsyncIterator[AsyncClient]:
 
 
 @pytest.fixture(scope="session")
-def _redis_container():  # type: ignore[return]
+def _redis_container() -> Iterator[RedisContainer]:  # pyright: ignore[reportUnusedFunction] — fixture, injected by name
     with RedisContainer("redis:7-alpine") as r:
         yield r
 

@@ -6,7 +6,7 @@ This file only owns the connection lifecycle.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -39,22 +39,20 @@ def get_engine() -> AsyncEngine:
 
 def init_engine(settings: Settings) -> AsyncEngine:
     """Create the engine. Idempotent — safe to call multiple times."""
-    global _engine, _session_factory  # noqa: PLW0603
+    global _engine, _session_factory
     if _engine is None:
         _engine = create_async_engine(
             settings.database_url,
             echo=settings.is_dev and settings.log_level == "DEBUG",
             pool_pre_ping=True,
         )
-        _session_factory = async_sessionmaker(
-            _engine, expire_on_commit=False, class_=AsyncSession
-        )
+        _session_factory = async_sessionmaker(_engine, expire_on_commit=False, class_=AsyncSession)
     return _engine
 
 
 async def dispose_engine() -> None:
     """Dispose the engine. Call on application shutdown."""
-    global _engine, _session_factory  # noqa: PLW0603
+    global _engine, _session_factory
     if _engine is not None:
         await _engine.dispose()
         _engine = None
@@ -62,7 +60,7 @@ async def dispose_engine() -> None:
 
 
 @asynccontextmanager
-async def session_scope() -> AsyncIterator[AsyncSession]:
+async def session_scope() -> AsyncGenerator[AsyncSession]:
     """Async context manager yielding a session with automatic commit/rollback."""
     if _session_factory is None:
         raise RuntimeError("Database engine not initialized. Call init_engine() first.")
