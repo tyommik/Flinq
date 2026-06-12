@@ -1,6 +1,7 @@
 """Domain modules.
 
-Each sub-package is a bounded context from `docs/architecture/2026-04-11-mvp-architecture-overview.md` §7.
+Each sub-package is a bounded context from the MVP architecture overview
+(`docs/architecture/2026-04-11-mvp-architecture-overview.md` §7).
 Modules must not import each other's internal code — only through public
 service functions or published events.
 

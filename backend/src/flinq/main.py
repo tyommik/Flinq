@@ -5,7 +5,7 @@ Used by both uvicorn (`flinq.main:app`) and the `flinq serve` CLI entry point.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -24,7 +24,7 @@ from flinq.modules.identity.middleware import CSRFMiddleware, SessionMiddleware
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan: initialise engine, yield, then dispose on shutdown."""
     settings = get_settings()
     configure_logging(settings)
