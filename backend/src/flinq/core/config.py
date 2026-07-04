@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # Frontend static assets (production only)
     static_dir: Path | None = None
 
+    # Local data (dictionary dump cache, future exports)
+    data_dir: Path = REPO_ROOT / "data"
+
     # Auth (ADR-0008)
     allow_public_registration: bool = True
     initial_admin_email: str = ""
