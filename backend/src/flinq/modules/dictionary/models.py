@@ -24,7 +24,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from flinq.core.db import Base
 
@@ -65,6 +65,17 @@ class DictionaryEntry(Base):
     part_of_speech: Mapped[str | None] = mapped_column(String(32))
     entry_key: Mapped[str] = mapped_column(Text)
     gloss_summary: Mapped[str | None] = mapped_column(Text)
+
+    translations: Mapped[list[DictionaryTranslation]] = relationship(
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="DictionaryTranslation.sense_index",
+    )
+    examples: Mapped[list[DictionaryExample]] = relationship(
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="DictionaryExample.sense_index",
+    )
 
     __table_args__ = (
         UniqueConstraint("source_version_id", "entry_key", name="uq_dictionary_entries_key"),
