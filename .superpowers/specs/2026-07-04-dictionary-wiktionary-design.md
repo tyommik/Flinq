@@ -1,7 +1,7 @@
 # Dictionary: Wiktionary Provider — Design
 
 - **Date:** 2026-07-04
-- **Status:** Approved by user 2026-07-04 — implementation pending
+- **Status:** ✅ Implemented on `feat/flq-2-dictionary-wiktionary` (Tasks 1–8 + final-review fixes; 114 tests pass, ruff/pyright clean). Reconciled with the shipped code 2026-07-04.
 - **Backlog task:** FLQ-2 (`backlog/tasks/flq-2 - Wiktionary-dictionary-provider-import-lookup-endpoints.md`)
 - **Branch (planned):** `feat/flq-2-dictionary-wiktionary`
 - **Canonical inputs:** `docs/architecture/2026-04-11-mvp-domain-model.md` (§9, §15), `docs/adr/ADR-0004-dictionary-wiktionary-provider.md`, `docs/adr/ADR-0001-unit-of-learning-token-level.md`
@@ -117,7 +117,7 @@ class DictionaryProvider(Protocol):
 ```
 
 - Empty dictionary result is **200 with `entries: []`** — never 404; `external_links` and `attribution` are always present.
-- Translations grouped into senses by `sense_index`; entries ordered by part of speech as imported.
+- Translations grouped into senses by `sense_index`; entries ordered by `entry_key` (deterministic and stable — shipped implementation; supersedes the earlier "as imported" wording).
 - Read path hits only `active` versions via the partial index; target lookup latency: single-digit ms index scan.
 
 ### 7. External dictionary links
