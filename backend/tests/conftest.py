@@ -60,6 +60,9 @@ async def _init_schema(  # pyright: ignore[reportUnusedFunction] — autouse fix
     from flinq.core.db import Base
 
     # Side-effect imports: register ORM models on Base.metadata before create_all.
+    from flinq.modules.dictionary import (
+        models as _dictionary_models,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    )
     from flinq.modules.identity import (
         models as _identity_models,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     )
