@@ -48,7 +48,11 @@ DEFAULT_EXTERNAL_DICTIONARIES: tuple[ExternalDictionaryTemplate, ...] = (
 
 def render_external_links(text: str, from_lang: str, to_lang: str) -> list[ExternalLink]:
     """Substitute placeholders for every template matching the pair."""
-    values = {"text": quote(text, safe=""), "from": from_lang, "to": to_lang}
+    values = {
+        "text": quote(text, safe=""),
+        "from": quote(from_lang, safe=""),
+        "to": quote(to_lang, safe=""),
+    }
     return [
         ExternalLink(name=t.name, url=t.url_template.format_map(values))
         for t in DEFAULT_EXTERNAL_DICTIONARIES
