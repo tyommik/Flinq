@@ -11,10 +11,11 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Protocol
 
+from flinq.core.textnorm import normalize_token
+
 # A word: a run of word chars that may contain internal hyphens/apostrophes,
 # OR a single word char, OR a run of punctuation (non-word, non-space).
 _TOKEN_RE = re.compile(r"\w[\w''\-]*\w|\w|[^\w\s]+", re.UNICODE)
-_OUTER_PUNCT_RE = re.compile(r"^[\W_]+|[\W_]+$", re.UNICODE)
 _WORD_CHAR_RE = re.compile(r"\w", re.UNICODE)
 
 
@@ -25,13 +26,6 @@ class Token:
     start_char_offset: int
     end_char_offset: int
     is_word_like: bool
-
-
-def normalize_token(surface: str) -> str:
-    """NFC, lowercase, strip outer punctuation; keep diacritics + internal -/'."""
-    s = unicodedata.normalize("NFC", surface).lower()
-    s = _OUTER_PUNCT_RE.sub("", s)
-    return s
 
 
 def is_word_like(surface: str) -> bool:
