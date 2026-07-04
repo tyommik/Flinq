@@ -286,4 +286,6 @@ pnpm-debug.log*
 # Docker / runtime data
 docker-data/
 .data/
+# Local data (dictionary dump cache, FLINQ_DATA_DIR default)
+/data/
 tmp/
