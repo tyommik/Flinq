@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import typer
 
+from flinq.cli.dictionary import app as dictionary_app
 from flinq.cli.identity import app as identity_app
 
 app = typer.Typer(help="Flinq administration and dev CLI.", no_args_is_help=True)
 
 app.add_typer(identity_app, name="identity")
+app.add_typer(dictionary_app, name="dictionary")
 
 
 @app.command()
