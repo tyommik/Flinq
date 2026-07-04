@@ -36,31 +36,6 @@ def test_unsupported_pair_without_file_errors() -> None:
     assert "Unsupported pair" in result.output
 
 
-async def test_refresh_with_file_imports(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from flinq.cli import dictionary as cli_dictionary
-
-    # Reuse the test engine/session instead of the CLI building its own.
-    async def _run(source_lang: str, target_lang: str, dump_path: Path, tag: str) -> None:
-        from flinq.modules.dictionary.service import import_dump
-
-        await import_dump(
-            db_session,
-            source_lang=source_lang,
-            target_lang=target_lang,
-            dump_path=dump_path,
-            source_version_tag=tag,
-        )
-
-    monkeypatch.setattr(cli_dictionary, "_run_refresh", _run)
-    await cli_dictionary._run_refresh("pt", "ru", FIXTURES / "ru_portuguese.jsonl", "t")
-    [entry] = await DictionaryRepo(db_session).lookup(
-        source_lang="pt", target_lang="ru", normalized="edifício"
-    )
-    assert entry.translations[0].translation_text == "здание; строение"
-
-
 async def test_run_refresh_real_body_against_test_db(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
