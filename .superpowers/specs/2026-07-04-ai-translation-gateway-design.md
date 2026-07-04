@@ -5,7 +5,7 @@
 - **Backlog task:** FLQ-3 (`backlog/tasks/flq-3 - AI-translation-gateway-OpenAI-compatible-adapter-contextual-translation.md`)
 - **Branch (planned):** `feature/FLQ-3-ai-translation-gateway`
 - **Canonical inputs:** `docs/adr/ADR-0003-llm-provider-openai-compatible.md`, `docs/architecture/2026-04-11-mvp-domain-model.md` (§11)
-- **Implementation plan:** *(to be written — `.superpowers/plans/`)*
+- **Implementation plan:** `.superpowers/plans/2026-07-04-ai-translation-gateway.md`
 
 ## Why
 
