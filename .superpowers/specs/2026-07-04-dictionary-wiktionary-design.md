@@ -1,11 +1,11 @@
 # Dictionary: Wiktionary Provider — Design
 
 - **Date:** 2026-07-04
-- **Status:** Draft — pending user review
+- **Status:** Approved by user 2026-07-04 — implementation pending
 - **Backlog task:** FLQ-2 (`backlog/tasks/flq-2 - Wiktionary-dictionary-provider-import-lookup-endpoints.md`)
 - **Branch (planned):** `feat/flq-2-dictionary-wiktionary`
 - **Canonical inputs:** `docs/architecture/2026-04-11-mvp-domain-model.md` (§9, §15), `docs/adr/ADR-0004-dictionary-wiktionary-provider.md`, `docs/adr/ADR-0001-unit-of-learning-token-level.md`
-- **Implementation plan:** *(to be written — `docs/superpowers/plans/`)*
+- **Implementation plan:** `.superpowers/plans/2026-07-04-dictionary-wiktionary.md`
 
 ## Why
 

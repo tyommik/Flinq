@@ -8,13 +8,13 @@
 
 **Tech Stack:** Python 3.13, SQLAlchemy 2 async + asyncpg (COPY via `copy_records_to_table`), Alembic, FastAPI, Pydantic v2, typer, httpx, loguru, pytest + testcontainers.
 
-**Spec:** `docs/superpowers/specs/2026-07-04-dictionary-wiktionary-design.md` — read it first; decisions there are binding.
+**Spec:** `.superpowers/specs/2026-07-04-dictionary-wiktionary-design.md` — read it first; decisions there are binding.
 
 ## Global Constraints
 
 - Branch: `feat/flq-2-dictionary-wiktionary` off current `main`.
 - Gates must stay green after every task: `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright` (0 errors), `uv run pytest` (all run from `backend/`).
-- Commits: scoped — `git commit -m "..." -- <exact paths>`; NO `Co-Authored-By` trailers.
+- Commits (AGENTS.md «Git конвенции»): conventional commits with the task in the scope — `feat(FLQ-2.<task#>): <english imperative subject, ≤72 chars>`; body answers "why", not "what"; always scoped paths — `git commit -m "..." -- <exact paths>`; NO `Co-Authored-By` trailers.
 - Do NOT edit `README.md`, `docs/adr/*`, `.github/workflows/*`, `backend/Dockerfile` — they carry uncommitted user WIP. The spec records the ADR-0004 deviation; no ADR edit in this change.
 - Languages: `en`, `ru`, `pt`. Covered pairs: en→ru, en→pt, ru→en, pt→en (English edition dumps), pt→ru (Russian edition dump).
 - Normalization everywhere = `flinq.core.textnorm.normalize_token` (NFC → U+2019→`'` → casefold → strip outer punctuation).
@@ -127,7 +127,7 @@ Expected: PASS (existing tokenization tests only assert lowercase-compatible cas
 ```bash
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run pyright
 git add backend/src/flinq/core/textnorm.py backend/tests/core backend/src/flinq/modules/lesson_library/tokenization.py
-git commit -m "feat(core): shared normalize_token with casefold and U+2019 (FLQ-1 follow-up)" -- backend/src/flinq/core/textnorm.py backend/tests/core backend/src/flinq/modules/lesson_library/tokenization.py
+git commit -m "feat(FLQ-2.1): add shared normalize_token with casefold and U+2019" -- backend/src/flinq/core/textnorm.py backend/tests/core backend/src/flinq/modules/lesson_library/tokenization.py
 ```
 
 ---
@@ -365,7 +365,7 @@ Expected: PASS (it walks `upgrade head` / `downgrade base` over all revisions, n
 ```bash
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest
 git add backend/src/flinq/modules/dictionary backend/migrations/versions/0004_dictionary.py backend/tests/modules/dictionary backend/tests/conftest.py
-git commit -m "feat(dictionary): models and migration for dictionary tables" -- backend/src/flinq/modules/dictionary backend/migrations/versions/0004_dictionary.py backend/tests/modules/dictionary backend/tests/conftest.py
+git commit -m "feat(FLQ-2.2): add dictionary models and migration" -- backend/src/flinq/modules/dictionary backend/migrations/versions/0004_dictionary.py backend/tests/modules/dictionary backend/tests/conftest.py
 ```
 
 ---
@@ -629,7 +629,7 @@ Expected: PASS (6 tests)
 ```bash
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run pyright
 git add backend/src/flinq/modules/dictionary/kaikki.py backend/tests/modules/dictionary/test_kaikki.py
-git commit -m "feat(dictionary): Kaikki JSONL record parser" -- backend/src/flinq/modules/dictionary/kaikki.py backend/tests/modules/dictionary/test_kaikki.py
+git commit -m "feat(FLQ-2.3): add Kaikki JSONL record parser" -- backend/src/flinq/modules/dictionary/kaikki.py backend/tests/modules/dictionary/test_kaikki.py
 ```
 
 ---
@@ -816,7 +816,7 @@ Expected: PASS (3 tests)
 ```bash
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run pyright
 git add backend/src/flinq/modules/dictionary/sources.py backend/src/flinq/modules/dictionary/download.py backend/tests/modules/dictionary/test_download.py backend/src/flinq/core/config.py .env.example
-git commit -m "feat(dictionary): dump source registry and streaming downloader" -- backend/src/flinq/modules/dictionary/sources.py backend/src/flinq/modules/dictionary/download.py backend/tests/modules/dictionary/test_download.py backend/src/flinq/core/config.py .env.example
+git commit -m "feat(FLQ-2.4): add dump source registry and streaming downloader" -- backend/src/flinq/modules/dictionary/sources.py backend/src/flinq/modules/dictionary/download.py backend/tests/modules/dictionary/test_download.py backend/src/flinq/core/config.py .env.example
 ```
 
 ---
@@ -1220,7 +1220,7 @@ Expected: PASS (5 tests). If `raw.driver_connection` typing upsets pyright, cast
 ```bash
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest
 git add backend/src/flinq/modules/dictionary/repo.py backend/src/flinq/modules/dictionary/service.py backend/src/flinq/modules/dictionary/models.py backend/tests/modules/dictionary/test_import_service.py backend/tests/fixtures/dictionary
-git commit -m "feat(dictionary): COPY-based import service with atomic version swap" -- backend/src/flinq/modules/dictionary/repo.py backend/src/flinq/modules/dictionary/service.py backend/src/flinq/modules/dictionary/models.py backend/tests/modules/dictionary/test_import_service.py backend/tests/fixtures/dictionary
+git commit -m "feat(FLQ-2.5): add COPY-based import with atomic version swap" -- backend/src/flinq/modules/dictionary/repo.py backend/src/flinq/modules/dictionary/service.py backend/src/flinq/modules/dictionary/models.py backend/tests/modules/dictionary/test_import_service.py backend/tests/fixtures/dictionary
 ```
 
 ---
@@ -1377,7 +1377,7 @@ Expected: PASS (2 tests)
 ```bash
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run pyright
 git add backend/src/flinq/cli/dictionary.py backend/src/flinq/cli/main.py backend/tests/cli
-git commit -m "feat(cli): flinq dictionary refresh command" -- backend/src/flinq/cli/dictionary.py backend/src/flinq/cli/main.py backend/tests/cli
+git commit -m "feat(FLQ-2.6): add flinq dictionary refresh CLI command" -- backend/src/flinq/cli/dictionary.py backend/src/flinq/cli/main.py backend/tests/cli
 ```
 
 ---
@@ -1501,7 +1501,7 @@ Run: `cd backend && uv run pytest tests/modules/dictionary/test_links.py -v` →
 ```bash
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run pyright
 git add backend/src/flinq/modules/dictionary/links.py backend/tests/modules/dictionary/test_links.py
-git commit -m "feat(dictionary): external dictionary link templates" -- backend/src/flinq/modules/dictionary/links.py backend/tests/modules/dictionary/test_links.py
+git commit -m "feat(FLQ-2.7): add external dictionary link templates" -- backend/src/flinq/modules/dictionary/links.py backend/tests/modules/dictionary/test_links.py
 ```
 
 ---
@@ -1797,7 +1797,7 @@ Expected: PASS (3 tests)
 ```bash
 cd backend && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest
 git add backend/src/flinq/modules/dictionary/schemas.py backend/src/flinq/modules/dictionary/provider.py backend/src/flinq/api/dictionary.py backend/src/flinq/main.py backend/tests/api/test_dictionary_lookup.py
-git commit -m "feat(dictionary): provider abstraction and lookup endpoint" -- backend/src/flinq/modules/dictionary/schemas.py backend/src/flinq/modules/dictionary/provider.py backend/src/flinq/api/dictionary.py backend/src/flinq/main.py backend/tests/api/test_dictionary_lookup.py
+git commit -m "feat(FLQ-2.8): add provider abstraction and lookup endpoint" -- backend/src/flinq/modules/dictionary/schemas.py backend/src/flinq/modules/dictionary/provider.py backend/src/flinq/api/dictionary.py backend/src/flinq/main.py backend/tests/api/test_dictionary_lookup.py
 ```
 
 ---
@@ -1805,7 +1805,7 @@ git commit -m "feat(dictionary): provider abstraction and lookup endpoint" -- ba
 ### Task 9: Finalization
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-07-04-dictionary-wiktionary-design.md` (status header → implemented; reconcile any drift)
+- Modify: `.superpowers/specs/2026-07-04-dictionary-wiktionary-design.md` (status header → implemented; reconcile any drift)
 - Modify (via backlog MCP, not by hand): FLQ-2 acceptance criteria + status
 
 - [ ] **Step 1: Full gate run**
@@ -1824,15 +1824,15 @@ With dev docker-compose Postgres up: `cd backend && uv run flinq dictionary refr
 Update the spec header (`Status:` → implemented on branch, test count) and any decision that drifted during implementation. Commit scoped:
 
 ```bash
-git add docs/superpowers/specs/2026-07-04-dictionary-wiktionary-design.md
-git commit -m "docs(flq-2): reconcile design spec with implementation" -- docs/superpowers/specs/2026-07-04-dictionary-wiktionary-design.md
+git add .superpowers/specs/2026-07-04-dictionary-wiktionary-design.md
+git commit -m "docs(FLQ-2): reconcile design spec with implementation" -- .superpowers/specs/2026-07-04-dictionary-wiktionary-design.md
 ```
 
 Check FLQ-2 acceptance criteria (backlog MCP `task_edit`: check AC #1–#5, status Done, final summary). AC#2 note: progress logs are covered by `_PROGRESS_EVERY_LINES` + download progress; AC#4 by the `DictionaryProvider` Protocol.
 
 - [ ] **Step 4: PR**
 
-Push the branch, open a PR to `main` titled `feat(dictionary): Wiktionary provider — import, lookup, external links (FLQ-2)`, wait for CI green, then squash-merge (same flow as FLQ-1/PR #1).
+Push the branch, open a PR to `main` titled `feat(FLQ-2): Wiktionary dictionary provider`, wait for CI green, then squash-merge. Per AGENTS.md, rewrite the squash commit message manually: subject `feat(FLQ-2): add Wiktionary dictionary provider with import and lookup`, body explaining *why* (offline-first dictionary layer for the Word Card), no branch names, no commit lists, no `Co-authored-by`.
 
 ---
 
