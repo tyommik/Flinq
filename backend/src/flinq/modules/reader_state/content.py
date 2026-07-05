@@ -82,6 +82,7 @@ async def build_lesson_content(session: AsyncSession, lesson: Lesson) -> LessonC
                 seg_id=s.id,
                 index=s.ordinal,
                 text=s.text,
+                # display-only casing helper for clients; NOT the token join key (see textnorm)
                 normalized_text=s.text.lower(),
                 tokens=tokens_for(s),
             )
