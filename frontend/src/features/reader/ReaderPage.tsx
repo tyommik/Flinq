@@ -1,13 +1,21 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import { cn } from '@/lib/utils'
 
 import { BottomToolbar } from './BottomToolbar'
 import { paginate, pageIndexForOrdinal } from './pagination'
+import { PageView } from './PageView'
 import { useReaderStore } from './readerStore'
 import { ReaderTopBar } from './ReaderTopBar'
 import { useLessonContent, useLessonDetail, useTokenStatuses } from './useReaderQueries'
+import { WordCardPlaceholder } from './WordCardPlaceholder'
+
+interface SelectedWord {
+  t: string
+  n: string
+  i: number
+}
 
 interface Props {
   lang: string
@@ -23,7 +31,9 @@ export function ReaderPage({ lang, lessonId }: Props) {
   const contentEnabled = status === 'ready'
 
   const { data: content, isLoading: contentLoading } = useLessonContent(lessonId, contentEnabled)
-  useTokenStatuses(lessonId, contentEnabled)
+  const { data: statuses } = useTokenStatuses(lessonId, contentEnabled)
+
+  const [selectedWord, setSelectedWord] = useState<SelectedWord | null>(null)
 
   const mode = useReaderStore((s) => s.mode)
   const pageIndex = useReaderStore((s) => s.pageIndex)
@@ -79,6 +89,20 @@ export function ReaderPage({ lang, lessonId }: Props) {
     )
   }
 
+  if (status !== 'ready') {
+    return (
+      <div
+        data-testid="reader-unavailable"
+        className="flex min-h-[50vh] flex-col items-center justify-center gap-4"
+      >
+        <p className="text-muted-foreground">Урок недоступен</p>
+        <Link to="/learn/$lang/library" params={{ lang }} className="text-primary underline">
+          В библиотеку
+        </Link>
+      </div>
+    )
+  }
+
   const progressPercent =
     lessonDetail.word_count > 0
       ? Math.min(
@@ -90,7 +114,9 @@ export function ReaderPage({ lang, lessonId }: Props) {
       : 0
 
   const currentPage = pages[pageIndex] ?? pages[0]
-  const pageText = currentPage ? currentPage.sentences.map((e) => e.sentence.text).join(' ') : ''
+  const canPrev = pageIndex > 0
+  const canNext = pageIndex < pages.length - 1
+  const statusMap = statuses ?? {}
 
   const flatSentences = content ? content.paragraphs.flatMap((p) => p.sentences) : []
   const currentSentence = flatSentences[sentenceFlatIndex] ?? flatSentences[0]
@@ -120,8 +146,18 @@ export function ReaderPage({ lang, lessonId }: Props) {
             className="h-64 w-full animate-pulse rounded-md bg-muted"
           />
         )}
-        {!contentLoading && content && mode === 'page' && (
-          <div data-testid="page-view-slot">{pageText}</div>
+        {!contentLoading && content && mode === 'page' && currentPage && (
+          <div data-testid="page-view-slot">
+            <PageView
+              page={currentPage}
+              statuses={statusMap}
+              onWordClick={setSelectedWord}
+              onPrev={() => setPageIndex(Math.max(0, pageIndex - 1))}
+              onNext={() => setPageIndex(Math.min(pages.length - 1, pageIndex + 1))}
+              canPrev={canPrev}
+              canNext={canNext}
+            />
+          </div>
         )}
         {!contentLoading && content && mode === 'sentence' && (
           <div data-testid="sentence-view-slot">{sentenceText}</div>
@@ -129,6 +165,12 @@ export function ReaderPage({ lang, lessonId }: Props) {
       </div>
 
       <BottomToolbar mode={mode} onToggleMode={() => setMode(mode === 'page' ? 'sentence' : 'page')} />
+
+      <WordCardPlaceholder
+        word={selectedWord}
+        status={selectedWord ? statusMap[selectedWord.n] : undefined}
+        onClose={() => setSelectedWord(null)}
+      />
     </div>
   )
 }

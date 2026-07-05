@@ -124,6 +124,15 @@ describe('ReaderPage', () => {
     expect(await screen.findByTestId('reader-failed')).toHaveTextContent('Не удалось обработать урок')
   })
 
+  it('shows an unavailable state with a link back to the library for archived lessons', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue({ ...baseLesson, status: 'archived' })
+
+    renderPage()
+
+    expect(await screen.findByTestId('reader-unavailable')).toHaveTextContent('Урок недоступен')
+    expect(readerApi.content).not.toHaveBeenCalled()
+  })
+
   it('renders lesson words for a ready lesson', async () => {
     vi.mocked(lessonsApi.get).mockResolvedValue(baseLesson)
     vi.mocked(readerApi.content).mockResolvedValue(content)
