@@ -5,7 +5,7 @@
 - **Backlog task:** FLQ-4 (`backlog/tasks/flq-4 - Reader-page-sentence-page-modes-token-highlighting-navigation.md`)
 - **Branch (planned):** `feature/FLQ-4-reader-page`
 - **Canonical inputs:** `docs/ui/reader.md` (UI spec, binding for layout/states/hotkeys), `docs/adr/ADR-0005-word-status-model-lingq-levels.md`, `docs/architecture/2026-04-11-mvp-domain-model.md` (§7, §8.2), ADR-0001, ADR-0003
-- **Implementation plan:** *(to be written — `.superpowers/plans/`)*
+- **Implementation plan:** `.superpowers/plans/2026-07-05-reader-page.md`
 
 ## Why
 
