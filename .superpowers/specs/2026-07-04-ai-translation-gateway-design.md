@@ -1,7 +1,7 @@
 # AI Translation Gateway — Design
 
 - **Date:** 2026-07-04
-- **Status:** Draft — pending user review
+- **Status:** ✅ Implemented on `feature/FLQ-3-ai-translation-gateway` (Tasks 1–5 + final-review fixes; 145 tests pass, ruff/pyright clean). Reconciled with the shipped code 2026-07-05.
 - **Backlog task:** FLQ-3 (`backlog/tasks/flq-3 - AI-translation-gateway-OpenAI-compatible-adapter-contextual-translation.md`)
 - **Branch (planned):** `feature/FLQ-3-ai-translation-gateway`
 - **Canonical inputs:** `docs/adr/ADR-0003-llm-provider-openai-compatible.md`, `docs/architecture/2026-04-11-mvp-domain-model.md` (§11)
@@ -78,7 +78,7 @@ Errors:
 | Provider failed after retries (network, 5xx, timeout) | 502 | `ai_provider_error` |
 | Provider 4xx (misconfiguration) | 502 | `ai_provider_error` |
 | Model returned nothing parseable | 502 | `ai_empty_response` |
-| No session | 401 | — |
+| No session | 401 — but note: a POST with no CSRF cookie/header is intercepted by `CSRFMiddleware` first and yields **403** (platform-wide behavior, same as lessons; the route's 401 fires when CSRF passes but the session is missing/invalid) | — |
 | Validation (lengths, language code) | 422 | FastAPI standard |
 
 502 bodies never include provider response text (privacy); details go to structured logs as status codes only.
