@@ -62,6 +62,7 @@ async def translate_hints(
 ) -> TranslationHints:
     settings = get_settings()
     if not settings.llm_enabled:
+        logger.debug("ai translate skipped: llm disabled")
         raise AIDisabled
 
     provider = provider or _default_provider()
