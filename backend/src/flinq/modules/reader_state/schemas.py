@@ -7,9 +7,9 @@ frontend reader — do not rename.
 from __future__ import annotations
 
 import uuid
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class WordToken(BaseModel):
@@ -70,3 +70,24 @@ class ReaderPositionOut(BaseModel):
     view_mode: str
     current_segment_id: uuid.UUID | None
     current_token_ordinal: int | None
+
+
+class BulkKnownRequest(BaseModel):
+    lesson_id: uuid.UUID
+    from_ordinal: int = Field(ge=0)
+    to_ordinal: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _check_range(self) -> Self:
+        if self.to_ordinal < self.from_ordinal:
+            raise ValueError("to_ordinal must be >= from_ordinal")
+        return self
+
+
+class BulkKnownResponse(BaseModel):
+    action_id: uuid.UUID
+    created_count: int
+
+
+class BulkUndoResponse(BaseModel):
+    undone_count: int

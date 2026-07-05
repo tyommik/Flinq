@@ -15,9 +15,18 @@ from flinq.modules.reader_state.access import (
     LessonNotReady,
     get_readable_lesson,
 )
+from flinq.modules.reader_state.bulk import (
+    ActionAlreadyUndone,
+    ActionNotFound,
+    bulk_mark_known,
+    undo_bulk_action,
+)
 from flinq.modules.reader_state.content import build_lesson_content
 from flinq.modules.reader_state.positions import upsert_position
 from flinq.modules.reader_state.schemas import (
+    BulkKnownRequest,
+    BulkKnownResponse,
+    BulkUndoResponse,
     LessonContentResponse,
     ReaderPositionPut,
     TokenStatusesResponse,
@@ -87,3 +96,37 @@ async def put_reader_position(
         current_segment_id=body.current_segment_id,
         current_token_ordinal=body.current_token_ordinal,
     )
+
+
+@router.post("/reader/bulk-known", response_model=BulkKnownResponse)
+async def bulk_known(
+    body: BulkKnownRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> BulkKnownResponse:
+    user_id = _require_user(request)
+    lesson = await _load_lesson(session, body.lesson_id, user_id)
+    action_id, created_count = await bulk_mark_known(
+        session,
+        user_id=user_id,
+        lesson=lesson,
+        from_ordinal=body.from_ordinal,
+        to_ordinal=body.to_ordinal,
+    )
+    return BulkKnownResponse(action_id=action_id, created_count=created_count)
+
+
+@router.post("/reader/bulk-actions/{action_id}/undo", response_model=BulkUndoResponse)
+async def undo_bulk_known(
+    action_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> BulkUndoResponse:
+    user_id = _require_user(request)
+    try:
+        undone_count = await undo_bulk_action(session, user_id=user_id, action_id=action_id)
+    except ActionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND) from None
+    except ActionAlreadyUndone:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="already_undone") from None
+    return BulkUndoResponse(undone_count=undone_count)

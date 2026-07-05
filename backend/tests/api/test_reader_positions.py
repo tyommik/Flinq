@@ -12,11 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.core.db import session_scope
 from flinq.main import create_app
-from flinq.modules.lesson_library import service
 from flinq.modules.reader_state.models import ReaderPosition
-
-# Genuine Portuguese, diacritics included — mirrors test_reader_content.py fixture style.
-TEXT = "O edifício antigo fica na praça. Eu gosto dele.\n\nSegundo parágrafo aqui."
+from tests.api._reader_helpers import register_and_onboard as _register_and_onboard
+from tests.api._reader_helpers import seed_ready_lesson as _seed_ready_lesson
 
 
 @pytest.fixture(autouse=True)
@@ -25,62 +23,6 @@ async def _cleanup_reader_positions() -> AsyncIterator[None]:  # pyright: ignore
     async with session_scope() as s:
         await s.execute(delete(ReaderPosition))
         await s.commit()
-
-
-async def _register_and_onboard(c: AsyncClient, email: str, lang: str = "pt") -> str:
-    r = await c.post(
-        "/auth/register",
-        json={"display_name": "T", "email": email, "password": "abcdefghij"},
-    )
-    assert r.status_code == 201
-    csrf = c.cookies.get("flinq_csrf")
-    assert csrf
-    await c.post(
-        "/me/onboarding",
-        json={"ui_language": "en", "learning_languages": [lang], "translation_language": "en"},
-        headers={"X-CSRF-Token": csrf},
-    )
-    return csrf
-
-
-async def _seed_ready_lesson(
-    c: AsyncClient,
-    csrf: str,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    text: str = TEXT,
-    language_code: str = "pt",
-    visibility: str = "private",
-    title: str = "Reader fixture",
-) -> uuid.UUID:
-    """POST a lesson (enqueue stubbed inline) then run the import pipeline directly.
-
-    Local copy of the helper in test_reader_content.py (Task 5 extracts it to a
-    shared conftest fixture).
-    """
-
-    async def _noop(lesson_id: object, job_id: object) -> None:
-        return None
-
-    monkeypatch.setattr("flinq.api.lessons.enqueue_lesson_import", _noop)
-
-    r = await c.post(
-        "/api/lessons",
-        json={
-            "title": title,
-            "language_code": language_code,
-            "raw_text": text,
-            "visibility": visibility,
-        },
-        headers={"X-CSRF-Token": csrf},
-    )
-    assert r.status_code == 202
-    lesson_id = uuid.UUID(r.json()["id"])
-
-    async with session_scope() as s:
-        await service.process_lesson_import(s, lesson_id)
-
-    return lesson_id
 
 
 async def test_put_position_then_get_lesson_reflects_it(
