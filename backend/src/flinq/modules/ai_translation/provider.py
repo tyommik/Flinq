@@ -90,10 +90,10 @@ class OpenAICompatibleProvider:
 
 
 def _parse_completion(response: httpx.Response) -> LLMCompletion:
-    body = response.json()
     try:
+        body = response.json()
         text = body["choices"][0]["message"]["content"] or ""
-    except (KeyError, IndexError, TypeError) as exc:
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
         raise ProviderRejected("malformed provider response") from exc
     usage = body.get("usage") or {}
     return LLMCompletion(

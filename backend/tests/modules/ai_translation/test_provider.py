@@ -145,3 +145,18 @@ async def test_malformed_body_raises_rejected() -> None:
     )
     with pytest.raises(ProviderRejected):
         await p.complete(system="s", user="u")
+
+
+async def test_non_json_2xx_body_raises_rejected() -> None:
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, text="<html>gateway splash</html>")
+
+    p = OpenAICompatibleProvider(
+        _settings(), client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    with pytest.raises(ProviderRejected):
+        await p.complete(system="s", user="u")
+    assert calls["n"] == 1  # not retried
