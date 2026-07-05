@@ -8,6 +8,7 @@ import { paginate, pageIndexForOrdinal } from './pagination'
 import { PageView } from './PageView'
 import { useReaderStore } from './readerStore'
 import { ReaderTopBar } from './ReaderTopBar'
+import { DEFAULT_TRANSLATION_LANG, SentenceView } from './SentenceView'
 import { useLessonContent, useLessonDetail, useTokenStatuses } from './useReaderQueries'
 import { WordCardPlaceholder } from './WordCardPlaceholder'
 
@@ -42,6 +43,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
   const font = useReaderStore((s) => s.font)
   const setMode = useReaderStore((s) => s.setMode)
   const setPageIndex = useReaderStore((s) => s.setPageIndex)
+  const setSentenceFlatIndex = useReaderStore((s) => s.setSentenceFlatIndex)
   const toggleSidebar = useReaderStore((s) => s.toggleSidebar)
 
   const pages = useMemo(() => (content ? paginate(content.paragraphs) : []), [content])
@@ -119,8 +121,10 @@ export function ReaderPage({ lang, lessonId }: Props) {
   const statusMap = statuses ?? {}
 
   const flatSentences = content ? content.paragraphs.flatMap((p) => p.sentences) : []
-  const currentSentence = flatSentences[sentenceFlatIndex] ?? flatSentences[0]
-  const sentenceText = currentSentence?.text ?? ''
+  const clampedSentenceIndex = Math.min(Math.max(sentenceFlatIndex, 0), Math.max(flatSentences.length - 1, 0))
+  const currentSentence = flatSentences[clampedSentenceIndex]
+  const canPrevSentence = clampedSentenceIndex > 0
+  const canNextSentence = clampedSentenceIndex < flatSentences.length - 1
 
   const fontClass = cn(
     FONT_SIZE_CLASS[font.size],
@@ -159,8 +163,22 @@ export function ReaderPage({ lang, lessonId }: Props) {
             />
           </div>
         )}
-        {!contentLoading && content && mode === 'sentence' && (
-          <div data-testid="sentence-view-slot">{sentenceText}</div>
+        {!contentLoading && content && mode === 'sentence' && currentSentence && (
+          <div data-testid="sentence-view-slot">
+            <SentenceView
+              lessonId={lessonId}
+              sentence={currentSentence}
+              statuses={statusMap}
+              targetLang={DEFAULT_TRANSLATION_LANG}
+              onWordClick={setSelectedWord}
+              onPrev={() => setSentenceFlatIndex(Math.max(0, clampedSentenceIndex - 1))}
+              onNext={() =>
+                setSentenceFlatIndex(Math.min(flatSentences.length - 1, clampedSentenceIndex + 1))
+              }
+              canPrev={canPrevSentence}
+              canNext={canNextSentence}
+            />
+          </div>
         )}
       </div>
 
