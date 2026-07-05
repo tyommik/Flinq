@@ -7,8 +7,9 @@ frontend reader — do not rename.
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WordToken(BaseModel):
@@ -54,3 +55,18 @@ class TokenStatusOut(BaseModel):
 
 class TokenStatusesResponse(BaseModel):
     statuses: dict[str, TokenStatusOut]
+
+
+class ReaderPositionPut(BaseModel):
+    lesson_id: uuid.UUID
+    view_mode: Literal["page", "sentence"]
+    current_segment_id: uuid.UUID | None
+    current_token_ordinal: int | None = Field(default=None, ge=0)
+
+
+class ReaderPositionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    view_mode: str
+    current_segment_id: uuid.UUID | None
+    current_token_ordinal: int | None

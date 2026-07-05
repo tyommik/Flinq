@@ -18,6 +18,8 @@ from flinq.modules.lesson_library.schemas import (
     LessonStatusResponse,
     LessonSummary,
 )
+from flinq.modules.reader_state.positions import get_position
+from flinq.modules.reader_state.schemas import ReaderPositionOut
 from flinq.worker.tasks import enqueue_lesson_import
 
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
@@ -106,4 +108,7 @@ async def get_lesson(
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     if lesson.owner_user_id != user_id and lesson.visibility != "shared":
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    return LessonStatusResponse.model_validate(lesson)
+    resp = LessonStatusResponse.model_validate(lesson)
+    position = await get_position(session, user_id=user_id, lesson_id=lesson_id)
+    resp.reader_position = ReaderPositionOut.model_validate(position) if position else None
+    return resp
