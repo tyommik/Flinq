@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from flinq import __version__
+from flinq.api.ai import router as ai_router
 from flinq.api.auth import router as auth_router
 from flinq.api.dictionary import router as dictionary_router
 from flinq.api.health import router as health_router
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(me_router)
     app.include_router(lessons_router)
     app.include_router(dictionary_router)
+    app.include_router(ai_router)
 
     # Serve frontend static assets in production (see architecture §5.3).
     if settings.static_dir is not None and settings.static_dir.exists():
