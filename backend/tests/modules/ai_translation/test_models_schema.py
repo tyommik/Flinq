@@ -3,12 +3,27 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
 
-from sqlalchemy import func, select
+import pytest
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.modules.ai_translation.models import AIRequest
 from flinq.modules.identity.repo import UserRepo
+
+
+@pytest.fixture(autouse=True)
+async def _clean_audit(  # pyright: ignore[reportUnusedFunction] — autouse fixture
+    db_session: AsyncSession,
+) -> AsyncIterator[None]:
+    """The round-trip test flushes-but-never-deletes an AIRequest row; session_scope
+    commits it on clean fixture exit, leaking a permanent row (see test_service.py's
+    own _clean_audit for the sibling pattern)."""
+    yield
+
+    await db_session.execute(delete(AIRequest))
+    await db_session.commit()
 
 
 async def _make_user(session: AsyncSession) -> uuid.UUID:

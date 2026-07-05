@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from flinq.core.config import get_settings
 from flinq.main import create_app
 from flinq.modules.ai_translation import service
-from flinq.modules.ai_translation.provider import LLMCompletion, ProviderUnavailable
+from flinq.modules.ai_translation.provider import (
+    LLMCompletion,
+    ProviderRejected,
+    ProviderUnavailable,
+)
 
 BODY = {"surface_text": "later", "context_text": "See you later!", "target_language_code": "ru"}
 
@@ -40,6 +44,16 @@ class _GoodProvider:
 class _DownProvider:
     async def complete(self, *, system: str, user: str) -> LLMCompletion:
         raise ProviderUnavailable("down")
+
+
+class _RejectedProvider:
+    async def complete(self, *, system: str, user: str) -> LLMCompletion:
+        raise ProviderRejected("bad key")
+
+
+class _EmptyProvider:
+    async def complete(self, *, system: str, user: str) -> LLMCompletion:
+        return LLMCompletion(text="\n \n", input_tokens=1, output_tokens=1)
 
 
 @pytest.fixture(autouse=True)
@@ -114,3 +128,23 @@ async def test_translate_provider_down_502(monkeypatch: pytest.MonkeyPatch) -> N
         r = await c.post("/api/ai/translate", json=BODY, headers={"X-CSRF-Token": csrf})
         assert r.status_code == 502
         assert r.json()["detail"] == "ai_provider_error"
+
+
+async def test_translate_provider_rejected_502(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(service, "_default_provider", lambda: _RejectedProvider())
+    transport = ASGITransport(app=create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        csrf = await _register_and_onboard(c, "ai-rejected@example.com")
+        r = await c.post("/api/ai/translate", json=BODY, headers={"X-CSRF-Token": csrf})
+        assert r.status_code == 502
+        assert r.json()["detail"] == "ai_provider_error"
+
+
+async def test_translate_empty_response_502(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(service, "_default_provider", lambda: _EmptyProvider())
+    transport = ASGITransport(app=create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        csrf = await _register_and_onboard(c, "ai-empty@example.com")
+        r = await c.post("/api/ai/translate", json=BODY, headers={"X-CSRF-Token": csrf})
+        assert r.status_code == 502
+        assert r.json()["detail"] == "ai_empty_response"
