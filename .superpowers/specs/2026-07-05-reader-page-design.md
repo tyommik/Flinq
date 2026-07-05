@@ -1,7 +1,7 @@
 # Reader Page — Design
 
 - **Date:** 2026-07-05
-- **Status:** Draft — pending user review
+- **Status:** ✅ Implemented on `feature/FLQ-4-reader-page` (Tasks 1–11 + final-review fixes; backend 175 + frontend 48 tests pass, all gates clean). Reconciled with the shipped code 2026-07-05.
 - **Backlog task:** FLQ-4 (`backlog/tasks/flq-4 - Reader-page-sentence-page-modes-token-highlighting-navigation.md`)
 - **Branch (planned):** `feature/FLQ-4-reader-page`
 - **Canonical inputs:** `docs/ui/reader.md` (UI spec, binding for layout/states/hotkeys), `docs/adr/ADR-0005-word-status-model-lingq-levels.md`, `docs/architecture/2026-04-11-mvp-domain-model.md` (§7, §8.2), ADR-0001, ADR-0003
@@ -20,7 +20,7 @@ The Reader is the core product experience: read a lesson with status-highlighted
 - Reader position persistence (debounced) and resume.
 - On-demand sentence translation («Показать перевод» in sentence mode): lazily translated via the FLQ-3 gateway on first request, persisted per `(segment, target_lang)` — instance-wide, so repeat views cost nothing.
 - Full `token_items` schema per domain model §8.2 (FLQ-6 inherits the table as-is).
-- Hotkeys `←/→`, `m`, `Esc`, `Ctrl+Z` (+ `f` font popover, `s` sidebar — cheap); mobile swipe + bottom-sheet per reader.md §13.
+- Hotkeys `←/→`, `m`, `Esc`, `Ctrl+Z` (lesson-scoped: undo disarms on lesson change); mobile swipe + bottom-sheet per reader.md §13. *(Shipped note: `f` remains unwired and `s` toggles a stub sidebar state with no panel — both land with FLQ-5's real sidebar/card; tracked in the follow-up task.)*
 
 ## Non-Goals
 
@@ -65,7 +65,7 @@ Built from `lesson_segments` + `lesson_token_occurrences`; heterogeneous token s
 
 - `t/n/i` = surface / normalized / `ordinal_in_lesson` (word-like tokens only); `ws` = whitespace run; `p` = punctuation. Short keys deliberate — this payload is the big one; served with gzip (`GZipMiddleware` is NOT currently in `main.py` — this change adds it app-wide, minimum_size ~1KB).
 - `word_count` = count of word-like occurrences. Progress % is client-computed from the bookmark ordinal.
-- Paragraph grouping: FLQ-1 stores both `paragraph` and `sentence` segment rows (`segment_type`) with char offsets; sentences are grouped under the paragraph whose `[start, end)` range contains them. Only `sentence` segments carry tokens in the response.
+- Paragraph grouping (reconciled with reality): the FLQ-1 pipeline persists ONLY `sentence` segment rows — this spec's original assumption of stored paragraph rows was wrong. Paragraph spans are recomputed at request time via the same pure `RegexSegmenter.split_paragraphs(raw_text)` used at import (language-independent, deterministic on the immutable `raw_text` of a `ready` lesson). **This makes `split_paragraphs` load-bearing for already-imported lessons — treat it as frozen, like `normalize_token`.** Long-term fix (follow-up): persist paragraph segments in the FLQ-1 pipeline.
 
 ### 2. `GET /api/lessons/{id}/token-statuses` — the user's status map for this lesson's words
 
