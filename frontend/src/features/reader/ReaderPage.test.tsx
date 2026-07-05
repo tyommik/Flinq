@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LessonDetail } from '@/api/lessons'
@@ -85,11 +85,10 @@ const content: LessonContent = {
   ],
 }
 
-function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderPage(lessonId = 'lesson-1', queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={queryClient}>
-      <ReaderPage lang="en" lessonId="lesson-1" />
+      <ReaderPage lang="en" lessonId={lessonId} />
     </QueryClientProvider>,
   )
 }
@@ -143,5 +142,72 @@ describe('ReaderPage', () => {
     const slot = await screen.findByTestId('page-view-slot')
     await waitFor(() => expect(slot).toHaveTextContent('Hello world.'))
     expect(slot).toHaveTextContent('Goodbye now.')
+  })
+
+  it('restores sentence-mode position to the segment referenced by current_segment_id', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue({
+      ...baseLesson,
+      reader_position: { view_mode: 'sentence', current_segment_id: 'seg-2', current_token_ordinal: 2 },
+    })
+    vi.mocked(readerApi.content).mockResolvedValue(content)
+    vi.mocked(readerApi.statuses).mockResolvedValue({})
+
+    renderPage()
+
+    const slot = await screen.findByTestId('sentence-view-slot')
+    await waitFor(() => expect(slot).toHaveTextContent('Goodbye now.'))
+    expect(slot).not.toHaveTextContent('Hello world.')
+  })
+
+  it('falls back to the first sentence when current_segment_id is not found', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue({
+      ...baseLesson,
+      reader_position: { view_mode: 'sentence', current_segment_id: 'seg-missing', current_token_ordinal: 0 },
+    })
+    vi.mocked(readerApi.content).mockResolvedValue(content)
+    vi.mocked(readerApi.statuses).mockResolvedValue({})
+
+    renderPage()
+
+    const slot = await screen.findByTestId('sentence-view-slot')
+    await waitFor(() => expect(slot).toHaveTextContent('Hello world.'))
+  })
+
+  it('shows an error state and does not spin forever when the lesson fetch fails', async () => {
+    vi.mocked(lessonsApi.get).mockRejectedValue(new Error('network error'))
+
+    renderPage()
+
+    expect(await screen.findByTestId('reader-error')).toHaveTextContent('Не удалось загрузить урок')
+    expect(readerApi.content).not.toHaveBeenCalled()
+  })
+
+  it('resets pageIndex and disarms the undo action when the lesson changes', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue(baseLesson)
+    vi.mocked(readerApi.content).mockResolvedValue(content)
+    vi.mocked(readerApi.statuses).mockResolvedValue({})
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { rerender } = renderPage('lesson-1', queryClient)
+
+    await screen.findByTestId('page-view-slot')
+
+    act(() => {
+      useReaderStore.setState({ pageIndex: 1, lastBulkActionId: 'stale-action' })
+    })
+
+    vi.mocked(lessonsApi.get).mockResolvedValue({ ...baseLesson, id: 'lesson-2' })
+
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <ReaderPage lang="en" lessonId="lesson-2" />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(useReaderStore.getState().lastBulkActionId).toBeNull()
+      expect(useReaderStore.getState().pageIndex).toBe(0)
+    })
+    await screen.findByTestId('page-view-slot')
   })
 })

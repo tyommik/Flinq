@@ -39,7 +39,7 @@ const LINE_HEIGHT_CLASS = ['leading-normal', 'leading-relaxed', 'leading-loose']
 
 export function ReaderPage({ lang, lessonId }: Props) {
   const navigate = useNavigate()
-  const { data: lessonDetail } = useLessonDetail(lessonId)
+  const { data: lessonDetail, isError: lessonDetailError } = useLessonDetail(lessonId)
   const status = lessonDetail?.status
   const contentEnabled = status === 'ready'
 
@@ -48,6 +48,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
 
   const [selectedWord, setSelectedWord] = useState<SelectedWord | null>(null)
   const [toastCount, setToastCount] = useState<number | null>(null)
+  const [bulkErrorVisible, setBulkErrorVisible] = useState(false)
 
   const mode = useReaderStore((s) => s.mode)
   const pageIndex = useReaderStore((s) => s.pageIndex)
@@ -65,26 +66,71 @@ export function ReaderPage({ lang, lessonId }: Props) {
   const undoBulk = useUndoBulk(lessonId)
 
   const pages = useMemo(() => (content ? paginate(content.paragraphs) : []), [content])
+  const flatSentences = useMemo(
+    () => (content ? content.paragraphs.flatMap((p) => p.sentences) : []),
+    [content],
+  )
 
-  const initializedRef = useRef(false)
+  // Reader state (page/sentence position, the armed undo action, any visible
+  // toast) is global zustand store state, not scoped to a lesson. Without an
+  // explicit reset keyed on lessonId, navigating lesson A -> lesson B leaves
+  // A's position and armed undo action stale and active against B's UI —
+  // e.g. Ctrl+Z on lesson B could undo lesson A's bulk-known action. This
+  // must run BEFORE the position-restore init effect below so the new
+  // lesson never observes the previous lesson's leftover state.
   useEffect(() => {
-    if (initializedRef.current || !content || !lessonDetail) return
-    const initialMode = lessonDetail.reader_position?.view_mode ?? 'page'
+    setPageIndex(0)
+    setSentenceFlatIndex(0)
+    setLastBulkActionId(null)
+    setToastCount(null)
+    setBulkErrorVisible(false)
+  }, [lessonId, setPageIndex, setSentenceFlatIndex, setLastBulkActionId])
+
+  // Tracks which lesson's position has already been restored, so re-renders
+  // (or content/lessonDetail refetches) for the same lesson don't re-run
+  // init, but a genuine lesson change does.
+  const initializedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (initializedRef.current === lessonId || !content || !lessonDetail) return
+    const readerPosition = lessonDetail.reader_position
+    const initialMode = readerPosition?.view_mode ?? 'page'
     setMode(initialMode)
-    setPageIndex(pageIndexForOrdinal(pages, lessonDetail.reader_position?.current_token_ordinal ?? null))
-    initializedRef.current = true
-  }, [content, lessonDetail, pages, setMode, setPageIndex])
+    if (initialMode === 'sentence' && readerPosition?.current_segment_id) {
+      const segId = readerPosition.current_segment_id
+      const idx = flatSentences.findIndex((s) => s.seg_id === segId)
+      setSentenceFlatIndex(idx === -1 ? 0 : idx)
+    } else {
+      setPageIndex(pageIndexForOrdinal(pages, readerPosition?.current_token_ordinal ?? null))
+    }
+    initializedRef.current = lessonId
+  }, [lessonId, content, lessonDetail, pages, flatSentences, setMode, setPageIndex, setSentenceFlatIndex])
 
   const statusMap = statuses ?? {}
   const currentPage = pages[pageIndex] ?? pages[0]
   const canPrev = pageIndex > 0
   const canNext = pageIndex < pages.length - 1
 
-  const flatSentences = content ? content.paragraphs.flatMap((p) => p.sentences) : []
   const clampedSentenceIndex = Math.min(Math.max(sentenceFlatIndex, 0), Math.max(flatSentences.length - 1, 0))
   const currentSentence = flatSentences[clampedSentenceIndex]
   const canPrevSentence = clampedSentenceIndex > 0
   const canNextSentence = clampedSentenceIndex < flatSentences.length - 1
+
+  const maxWordOrdinal = useMemo(() => {
+    const lastPage = pages[pages.length - 1]
+    return lastPage ? lastPage.toOrdinal : -1
+  }, [pages])
+
+  const currentOrdinalForProgress = useMemo(() => {
+    if (mode === 'page') return currentPage?.toOrdinal ?? null
+    const words = currentSentence?.tokens.filter(isWord) ?? []
+    return words.length > 0 ? (words[words.length - 1]?.i ?? null) : null
+  }, [mode, currentPage, currentSentence])
+
+  const progressPercent = useMemo(() => {
+    if (currentOrdinalForProgress == null || maxWordOrdinal < 0) return 0
+    if (maxWordOrdinal === 0) return 100
+    return Math.min(100, Math.max(0, Math.round((currentOrdinalForProgress / maxWordOrdinal) * 100)))
+  }, [currentOrdinalForProgress, maxWordOrdinal])
 
   const readyForInteraction = contentEnabled && !!content
 
@@ -100,6 +146,12 @@ export function ReaderPage({ lang, lessonId }: Props) {
     if (!lastBulkActionId) return
     undoBulk.mutate(lastBulkActionId, {
       onSuccess: () => {
+        setLastBulkActionId(null)
+        setToastCount(null)
+      },
+      onError: () => {
+        // The action may no longer be undoable (already undone, expired,
+        // etc.) — disarm undo rather than leave a dead "Отменить" button.
         setLastBulkActionId(null)
         setToastCount(null)
       },
@@ -135,6 +187,11 @@ export function ReaderPage({ lang, lessonId }: Props) {
           // must stay honest and be able to undo it.
           setLastBulkActionId(result.action_id)
           setToastCount(result.created_count > 0 ? result.created_count : null)
+        },
+        onError: () => {
+          // Do not advance the page on failure — show a transient error
+          // instead so the user knows the page wasn't marked known.
+          setBulkErrorVisible(true)
         },
       },
     )
@@ -177,6 +234,26 @@ export function ReaderPage({ lang, lessonId }: Props) {
   })
 
   const swipeHandlers = useSwipe({ onSwipeLeft: handleNext, onSwipeRight: handlePrev })
+
+  useEffect(() => {
+    if (!bulkErrorVisible) return
+    const timer = window.setTimeout(() => setBulkErrorVisible(false), 4000)
+    return () => window.clearTimeout(timer)
+  }, [bulkErrorVisible])
+
+  if (lessonDetailError) {
+    return (
+      <div
+        data-testid="reader-error"
+        className="flex min-h-[50vh] flex-col items-center justify-center gap-4"
+      >
+        <p className="text-destructive">Не удалось загрузить урок</p>
+        <Link to="/learn/$lang/library" params={{ lang }} className="text-primary underline">
+          В библиотеку
+        </Link>
+      </div>
+    )
+  }
 
   if (!lessonDetail) {
     return (
@@ -225,16 +302,6 @@ export function ReaderPage({ lang, lessonId }: Props) {
       </div>
     )
   }
-
-  const progressPercent =
-    lessonDetail.word_count > 0
-      ? Math.min(
-          100,
-          Math.round(
-            ((lessonDetail.reader_position?.current_token_ordinal ?? 0) / lessonDetail.word_count) * 100,
-          ),
-        )
-      : 0
 
   const fontClass = cn(
     FONT_SIZE_CLASS[font.size],
@@ -304,6 +371,17 @@ export function ReaderPage({ lang, lessonId }: Props) {
 
       {toastCount != null && (
         <UndoToast count={toastCount} onUndo={handleUndo} onDismiss={() => setToastCount(null)} />
+      )}
+
+      {bulkErrorVisible && (
+        <div
+          data-testid="bulk-error"
+          className="fixed inset-x-0 bottom-6 z-[var(--z-toast)] flex justify-center"
+        >
+          <div className="rounded-full border border-destructive bg-card px-4 py-2 text-sm text-destructive shadow-lg">
+            Не удалось сохранить
+          </div>
+        </div>
       )}
     </div>
   )

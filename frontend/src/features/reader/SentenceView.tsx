@@ -18,7 +18,6 @@ interface SelectedWord {
 interface Props {
   lessonId: string
   sentence: Sentence
-  paragraphIndexLabel?: never
   statuses: StatusMap
   targetLang: 'en' | 'ru' | 'pt'
   onWordClick?: (word: SelectedWord) => void
