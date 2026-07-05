@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { ReaderPosition } from './reader'
 
 export type LessonVisibility = 'private' | 'shared'
 export type LessonStatus = 'draft' | 'processing' | 'ready' | 'failed' | 'archived'
@@ -27,6 +28,11 @@ export interface CreateLessonPayload {
   visibility?: LessonVisibility
 }
 
+export type LessonDetail = LessonSummary & {
+  segment_count: number
+  reader_position: ReaderPosition | null
+}
+
 interface ListParams {
   tab?: 'continue' | 'lessons'
   q?: string
@@ -47,4 +53,5 @@ export const lessonsApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  get: (id: string) => api<LessonDetail>(`/api/lessons/${id}`),
 }
