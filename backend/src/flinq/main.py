@@ -9,6 +9,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
@@ -19,6 +20,7 @@ from flinq.api.dictionary import router as dictionary_router
 from flinq.api.health import router as health_router
 from flinq.api.lessons import router as lessons_router
 from flinq.api.me import router as me_router
+from flinq.api.reader import router as reader_router
 from flinq.core.config import get_settings
 from flinq.core.db import dispose_engine, init_engine
 from flinq.core.logging import configure_logging
@@ -50,8 +52,11 @@ def create_app() -> FastAPI:
     )
 
     # Starlette stacks middleware in reverse add order: last added = outermost (runs first).
-    # Execution order wanted: Session (sets state) → CSRF (reads cookies) → handler.
+    # Execution order wanted: Session (sets state) → CSRF (reads cookies) → handler → GZip.
+    # GZip must be innermost (closest to the handler) so it compresses responses
+    # before they pass back up through CSRF/Session — it is added FIRST.
     # Session must be outermost, so it is added LAST.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(CSRFMiddleware)
     app.add_middleware(SessionMiddleware)  # outer — runs first per request
 
@@ -59,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(me_router)
     app.include_router(lessons_router)
+    app.include_router(reader_router)
     app.include_router(dictionary_router)
     app.include_router(ai_router)
 

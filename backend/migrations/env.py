@@ -19,8 +19,12 @@ from flinq.core.db import Base
 
 # Import all modules here so Alembic autogenerate sees their ORM models.
 # As new modules are added, import them below.
+from flinq.modules.ai_translation import models as _ai_translation_models  # noqa: F401
+from flinq.modules.dictionary import models as _dictionary_models  # noqa: F401
 from flinq.modules.identity import models as _identity_models  # noqa: F401
 from flinq.modules.lesson_library import models as _lesson_library_models  # noqa: F401
+from flinq.modules.reader_state import models as _reader_state_models  # noqa: F401
+from flinq.modules.vocabulary import models as _vocabulary_models  # noqa: F401
 
 config = context.config
 

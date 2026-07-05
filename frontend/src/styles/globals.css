@@ -48,6 +48,10 @@
   --reader-tracked: oklch(0.93 0.13 95);
   --reader-tracked-foreground: oklch(0.141 0.005 285.823);
 
+  /* Reader token highlight backgrounds (FLQ-4.9) */
+  --reader-new-bg: #e0f2fe;
+  --reader-tracked-bg: #fef08a;
+
   /* Confidence scale 0..5 — yellow gradient */
   --confidence-0: oklch(0.97 0.025 95);
   --confidence-1: oklch(0.95 0.05 95);

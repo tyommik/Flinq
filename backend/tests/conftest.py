@@ -72,6 +72,12 @@ async def _init_schema(  # pyright: ignore[reportUnusedFunction] — autouse fix
     from flinq.modules.lesson_library import (
         models as _lesson_models,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     )
+    from flinq.modules.reader_state import (
+        models as _reader_state_models,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    )
+    from flinq.modules.vocabulary import (
+        models as _vocabulary_models,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    )
 
     settings = get_settings()
     engine = init_engine(settings)

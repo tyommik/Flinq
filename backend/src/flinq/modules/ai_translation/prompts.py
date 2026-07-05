@@ -43,6 +43,22 @@ def build_hints_prompt(
     return SYSTEM_PROMPT, user
 
 
+SENTENCE_SYSTEM_PROMPT = (
+    "You are a translation assistant inside a language-learning reader. "
+    "Reply with the translation of the given sentence only — no explanations, no quotes."
+)
+
+
+def build_sentence_prompt(*, sentence_text: str, target_language_code: str) -> tuple[str, str]:
+    """Return (system, user) messages for a full-sentence translation."""
+    sentence = normalize_ai_text(sentence_text)
+    user = (
+        f"Sentence: {sentence}\n"
+        f"Translate this sentence into {LANGUAGE_NAMES[target_language_code]}."
+    )
+    return SENTENCE_SYSTEM_PROMPT, user
+
+
 def parse_hints(text: str) -> list[str]:
     """Model output -> up to 3 clean, deduplicated hint strings (order preserved)."""
     hints: list[str] = []

@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from flinq.modules.identity.schemas import SUPPORTED_LEARNING_LANGUAGES
+from flinq.modules.reader_state.schemas import ReaderPositionOut
 
 
 class CreateLessonRequest(BaseModel):
@@ -60,3 +61,4 @@ class LessonStatusResponse(BaseModel):
     segment_count: int
     visibility: str
     created_at: datetime
+    reader_position: ReaderPositionOut | None = None
