@@ -93,6 +93,45 @@ describe('paginate', () => {
     expect(pages).toHaveLength(1)
     expect(pages[0]!.sentences.map((s) => s.paragraphIndex)).toEqual([0, 1, 1])
   })
+
+  it('merges a trailing punctuation-only sentence into the last page instead of flushing it alone', () => {
+    // Enough word sentences to close a page at pageSize=100, followed by a
+    // trailing word-free sentence (e.g. a lone closing quote/ellipsis line).
+    const counts = [100, 0]
+    const paragraphs = makeParagraphs(counts)
+    const pages = paginate(paragraphs, 100)
+
+    expect(pages).toHaveLength(1)
+    expect(pages[0]!.sentences.map((s) => s.sentence.index)).toEqual([0, 1])
+    expect(pages[0]!.wordCount).toBe(100)
+    for (const page of pages) {
+      expect(page.fromOrdinal).not.toBe(Infinity)
+    }
+  })
+
+  it('emits a single explicit empty page when the entire input has zero word tokens', () => {
+    const counts = [0, 0, 0]
+    const paragraphs = makeParagraphs(counts)
+    const pages = paginate(paragraphs, 100)
+
+    expect(pages).toHaveLength(1)
+    expect(pages[0]!.wordCount).toBe(0)
+    expect(pages[0]!.fromOrdinal).toBe(0)
+    expect(pages[0]!.toOrdinal).toBe(-1)
+    expect(pageIndexForOrdinal(pages, 5)).toBe(0)
+  })
+
+  it('invariant sweep: every page has finite ordinals with fromOrdinal <= toOrdinal, or is explicitly empty', () => {
+    const counts = [50, 60, 70, 80, 0, 0, 90]
+    const paragraphs = makeParagraphs(counts)
+    const pages = paginate(paragraphs, 100)
+
+    for (const page of pages) {
+      const invariant =
+        (Number.isFinite(page.fromOrdinal) && page.fromOrdinal <= page.toOrdinal) || page.wordCount === 0
+      expect(invariant).toBe(true)
+    }
+  })
 })
 
 describe('pageIndexForOrdinal', () => {

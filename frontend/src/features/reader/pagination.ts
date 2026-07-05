@@ -29,7 +29,21 @@ export function paginate(paragraphs: Paragraph[], pageSize: number = PAGE_SIZE_W
       current = null
     }
   }
-  if (current && current.sentences.length > 0) pages.push(current)
+  if (current && current.sentences.length > 0) {
+    if (current.wordCount === 0 && pages.length > 0) {
+      // Trailing run of word-free sentences (e.g. a punctuation-only closing
+      // line) has no ordinals of its own — fold it into the last page rather
+      // than flushing a degenerate fromOrdinal=Infinity/toOrdinal=-1 page.
+      pages[pages.length - 1]!.sentences.push(...current.sentences)
+    } else if (current.wordCount === 0) {
+      // The entire input contained zero word tokens. There is no preceding
+      // page to merge into, so emit a single explicit empty page — empty
+      // page — callers must skip bulk-known when wordCount === 0.
+      pages.push({ ...current, fromOrdinal: 0, toOrdinal: -1 })
+    } else {
+      pages.push(current)
+    }
+  }
   return pages
 }
 
