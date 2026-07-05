@@ -45,3 +45,12 @@ class LessonContentResponse(BaseModel):
     language_code: str
     word_count: int
     paragraphs: list[ParagraphOut]
+
+
+class TokenStatusOut(BaseModel):
+    s: str
+    c: int | None = None
+
+
+class TokenStatusesResponse(BaseModel):
+    statuses: dict[str, TokenStatusOut]

@@ -15,7 +15,8 @@ from flinq.modules.reader_state.access import (
     get_readable_lesson,
 )
 from flinq.modules.reader_state.content import build_lesson_content
-from flinq.modules.reader_state.schemas import LessonContentResponse
+from flinq.modules.reader_state.schemas import LessonContentResponse, TokenStatusesResponse
+from flinq.modules.reader_state.statuses import lesson_token_statuses
 
 router = APIRouter(prefix="/api", tags=["reader"])
 
@@ -43,3 +44,22 @@ async def lesson_content(
     except LessonNotReady:
         raise HTTPException(status.HTTP_409_CONFLICT, detail="lesson_not_ready") from None
     return await build_lesson_content(session, lesson)
+
+
+@router.get("/lessons/{lesson_id}/token-statuses", response_model=TokenStatusesResponse)
+async def lesson_token_statuses_route(
+    lesson_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> TokenStatusesResponse:
+    user_id = _require_user(request)
+    try:
+        lesson = await get_readable_lesson(session, lesson_id, user_id)
+    except LessonNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND) from None
+    except LessonForbidden:
+        raise HTTPException(status.HTTP_403_FORBIDDEN) from None
+    except LessonNotReady:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="lesson_not_ready") from None
+    statuses = await lesson_token_statuses(session, lesson=lesson, user_id=user_id)
+    return TokenStatusesResponse(statuses=statuses)
