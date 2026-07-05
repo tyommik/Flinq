@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.core.db import get_session
+from flinq.modules.ai_translation import service as ai_translation_service
+from flinq.modules.ai_translation.provider import ProviderRejected, ProviderUnavailable
 from flinq.modules.lesson_library.models import Lesson
 from flinq.modules.reader_state.access import (
     LessonForbidden,
@@ -29,9 +31,12 @@ from flinq.modules.reader_state.schemas import (
     BulkUndoResponse,
     LessonContentResponse,
     ReaderPositionPut,
+    SegmentTranslationRequest,
+    SegmentTranslationResponse,
     TokenStatusesResponse,
 )
 from flinq.modules.reader_state.statuses import lesson_token_statuses
+from flinq.modules.reader_state.translations import SegmentNotFound, get_or_translate_segment
 
 router = APIRouter(prefix="/api", tags=["reader"])
 
@@ -95,6 +100,43 @@ async def put_reader_position(
         view_mode=body.view_mode,
         current_segment_id=body.current_segment_id,
         current_token_ordinal=body.current_token_ordinal,
+    )
+
+
+@router.post(
+    "/lessons/{lesson_id}/segments/{segment_id}/translation",
+    response_model=SegmentTranslationResponse,
+)
+async def segment_translation(
+    lesson_id: uuid.UUID,
+    segment_id: uuid.UUID,
+    body: SegmentTranslationRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> SegmentTranslationResponse:
+    user_id = _require_user(request)
+    lesson = await _load_lesson(session, lesson_id, user_id)
+    try:
+        row, stored = await get_or_translate_segment(
+            session,
+            user_id=user_id,
+            lesson=lesson,
+            segment_id=segment_id,
+            target_language_code=body.target_language_code,
+        )
+    except SegmentNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND) from None
+    except ai_translation_service.AIDisabled:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="ai_disabled") from None
+    except (ProviderUnavailable, ProviderRejected):
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail="ai_provider_error") from None
+    except ai_translation_service.AIEmptyResponse:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail="ai_empty_response") from None
+    return SegmentTranslationResponse(
+        text=row.translation_text,
+        source=row.source,
+        model=row.model,
+        stored=stored,
     )
 
 

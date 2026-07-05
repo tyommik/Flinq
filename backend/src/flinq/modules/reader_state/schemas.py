@@ -91,3 +91,14 @@ class BulkKnownResponse(BaseModel):
 
 class BulkUndoResponse(BaseModel):
     undone_count: int
+
+
+class SegmentTranslationRequest(BaseModel):
+    target_language_code: Literal["en", "ru", "pt"]
+
+
+class SegmentTranslationResponse(BaseModel):
+    text: str
+    source: str
+    model: str
+    stored: bool
