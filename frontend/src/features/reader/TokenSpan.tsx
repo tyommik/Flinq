@@ -11,12 +11,12 @@ export const TokenSpan = memo(function TokenSpan({ token, status, onWordClick }:
   if ('ws' in token) return <span>{token.ws}</span>
   if ('p' in token) return <span>{token.p}</span>
   const s = status?.s
-  const bg =
-    s === 'tracked'
-      ? 'bg-[var(--reader-tracked-bg)]'
-      : s === 'known' || s === 'ignored'
-        ? ''
-        : 'bg-[var(--reader-new-bg)]'
+  const active = s === 'tracked' && (status?.c ?? 0) >= 1
+  const bg = active
+    ? 'bg-[var(--reader-tracked-bg)]'
+    : s === 'known' || s === 'ignored'
+      ? ''
+      : 'bg-[var(--reader-new-bg)]'
   return (
     <span
       data-ordinal={token.i}

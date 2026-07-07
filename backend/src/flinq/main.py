@@ -21,6 +21,7 @@ from flinq.api.health import router as health_router
 from flinq.api.lessons import router as lessons_router
 from flinq.api.me import router as me_router
 from flinq.api.reader import router as reader_router
+from flinq.api.vocabulary import router as vocabulary_router
 from flinq.core.config import get_settings
 from flinq.core.db import dispose_engine, init_engine
 from flinq.core.logging import configure_logging
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(lessons_router)
     app.include_router(reader_router)
     app.include_router(dictionary_router)
+    app.include_router(vocabulary_router)
     app.include_router(ai_router)
 
     # Serve frontend static assets in production (see architecture §5.3).

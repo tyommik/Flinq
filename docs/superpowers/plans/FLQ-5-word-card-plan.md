@@ -17,6 +17,7 @@
 - `confidence` DB range is `0..5` (`ck_token_items_confidence_range`, already applied). Manual UI exposes `1..4` + `✓`(known) + `🗑`(ignored); `0` is system-assigned; `5` is SRS-only. No `token_items` migration.
 - Migration head is `0006_reader_state`; the new migration is `0007_vocabulary_card` with `down_revision = "0006_reader_state"`.
 - Commit trailer policy: do NOT add `Co-Authored-By`. Commit exact paths (avoid sweeping unrelated staged files).
+- **Branch:** all implementation commits land on `feat/FLQ-5-word-card` — never on `main`. Per-task commits are atomic (`feat(FLQ-5): ...`); the branch merges into `main` via a single squash commit at the end (AGENTS.md §"Слияние со сквошем"). Conventional-commit subject ≤72 chars, imperative, English.
 - LangCode = `Literal["en", "ru", "pt"]`.
 
 ## File Structure

@@ -165,7 +165,6 @@ export function SentenceView({
                 {statuses[token.n]?.c ?? 0}
               </span>
               <span>{token.t}</span>
-              <span className="text-muted-foreground">—</span>
             </button>
           ))}
         </div>

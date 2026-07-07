@@ -34,11 +34,11 @@ broker: AsyncBroker = _build_broker()
 if _settings.env != "test":
 
     @broker.on_event(TaskiqEvents.WORKER_STARTUP)
-    async def _init_worker_engine(_state: TaskiqState) -> None:
+    async def _init_worker_engine(_state: TaskiqState) -> None:  # pyright: ignore[reportUnusedFunction]
         settings = get_settings()
         configure_logging(settings)
         init_engine(settings)
 
     @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
-    async def _dispose_worker_engine(_state: TaskiqState) -> None:
+    async def _dispose_worker_engine(_state: TaskiqState) -> None:  # pyright: ignore[reportUnusedFunction]
         await dispose_engine()

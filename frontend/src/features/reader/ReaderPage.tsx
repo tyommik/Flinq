@@ -21,7 +21,7 @@ import {
   useUndoBulk,
 } from './useReaderQueries'
 import { useSwipe } from './useSwipe'
-import { WordCardPlaceholder } from './WordCardPlaceholder'
+import { WordCard } from './WordCard'
 
 interface SelectedWord {
   t: string
@@ -84,6 +84,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
     setLastBulkActionId(null)
     setToastCount(null)
     setBulkErrorVisible(false)
+    setSelectedWord(null)
   }, [lessonId, setPageIndex, setSentenceFlatIndex, setLastBulkActionId])
 
   // Tracks which lesson's position has already been restored, so re-renders
@@ -363,9 +364,11 @@ export function ReaderPage({ lang, lessonId }: Props) {
 
       <BottomToolbar mode={mode} onToggleMode={() => setMode(mode === 'page' ? 'sentence' : 'page')} />
 
-      <WordCardPlaceholder
+      <WordCard
         word={selectedWord}
-        status={selectedWord ? statusMap[selectedWord.n] : undefined}
+        lang={content?.language_code ?? lang}
+        target={DEFAULT_TRANSLATION_LANG}
+        lessonId={lessonId}
         onClose={() => setSelectedWord(null)}
       />
 
