@@ -78,8 +78,12 @@ class PersonalTranslation(Base):
         Index("ix_personal_translations_item", "owner_user_id", "item_kind", "item_id"),
         Index(
             "uq_personal_translations_primary",
-            "owner_user_id", "item_kind", "item_id", "target_language_code",
-            unique=True, postgresql_where=text("is_primary"),
+            "owner_user_id",
+            "item_kind",
+            "item_id",
+            "target_language_code",
+            unique=True,
+            postgresql_where=text("is_primary"),
         ),
     )
 
@@ -98,9 +102,7 @@ class PersonalNote(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "owner_user_id", "item_kind", "item_id", name="uq_personal_notes_item"
-        ),
+        UniqueConstraint("owner_user_id", "item_kind", "item_id", name="uq_personal_notes_item"),
     )
 
 
@@ -114,7 +116,5 @@ class ItemTag(Base):
     tag_name: Mapped[str] = mapped_column(String(64))
 
     __table_args__ = (
-        UniqueConstraint(
-            "owner_user_id", "item_kind", "item_id", "tag_name", name="uq_item_tags"
-        ),
+        UniqueConstraint("owner_user_id", "item_kind", "item_id", "tag_name", name="uq_item_tags"),
     )

@@ -58,8 +58,14 @@ async def _owned_item(
 
 
 async def create_item(
-    session: AsyncSession, *, user_id: uuid.UUID, kind: str, language_code: str,
-    text: str, status: str, confidence: int | None,
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    kind: str,
+    language_code: str,
+    text: str,
+    status: str,
+    confidence: int | None,
 ) -> TokenItem:
     _check_kind(kind)
     normalized = normalize_token(text)
@@ -72,8 +78,11 @@ async def create_item(
         await session.commit()
         return existing
     item = TokenItem(
-        user_id=user_id, language_code=language_code, token_text=normalized,
-        status=status, confidence=confidence,
+        user_id=user_id,
+        language_code=language_code,
+        token_text=normalized,
+        status=status,
+        confidence=confidence,
     )
     session.add(item)
     await session.commit()
@@ -81,8 +90,13 @@ async def create_item(
 
 
 async def patch_item(
-    session: AsyncSession, *, user_id: uuid.UUID, kind: str, item_id: uuid.UUID,
-    status: str, confidence: int | None,
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    kind: str,
+    item_id: uuid.UUID,
+    status: str,
+    confidence: int | None,
 ) -> TokenItem:
     _check_kind(kind)
     item = await _owned_item(session, user_id=user_id, item_id=item_id)
@@ -93,7 +107,11 @@ async def patch_item(
 
 
 async def lookup(
-    session: AsyncSession, *, user_id: uuid.UUID, language_code: str, text: str,
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    language_code: str,
+    text: str,
     target_language_code: str,
 ) -> LookupResult:
     normalized = normalize_token(text)
@@ -102,63 +120,100 @@ async def lookup(
     )
     if item is None:
         return LookupResult(
-            item_id=None, status="new", confidence=None,
-            translations=[], primary=None, note=None, tags=[],
+            item_id=None,
+            status="new",
+            confidence=None,
+            translations=[],
+            primary=None,
+            note=None,
+            tags=[],
         )
     translations = list(
-        (await session.execute(
-            select(PersonalTranslation)
-            .where(
-                PersonalTranslation.owner_user_id == user_id,
-                PersonalTranslation.item_kind == "token",
-                PersonalTranslation.item_id == item.id,
+        (
+            await session.execute(
+                select(PersonalTranslation)
+                .where(
+                    PersonalTranslation.owner_user_id == user_id,
+                    PersonalTranslation.item_kind == "token",
+                    PersonalTranslation.item_id == item.id,
+                )
+                .order_by(PersonalTranslation.is_primary.desc(), PersonalTranslation.created_at)
             )
-            .order_by(PersonalTranslation.is_primary.desc(), PersonalTranslation.created_at)
-        )).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     primary = next(
-        (t for t in translations
-         if t.is_primary and t.target_language_code == target_language_code),
+        (
+            t
+            for t in translations
+            if t.is_primary and t.target_language_code == target_language_code
+        ),
         None,
     )
-    note_row = (await session.execute(
-        select(PersonalNote).where(
-            PersonalNote.owner_user_id == user_id,
-            PersonalNote.item_kind == "token",
-            PersonalNote.item_id == item.id,
+    note_row = (
+        await session.execute(
+            select(PersonalNote).where(
+                PersonalNote.owner_user_id == user_id,
+                PersonalNote.item_kind == "token",
+                PersonalNote.item_id == item.id,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     tags = list(
-        (await session.execute(
-            select(ItemTag.tag_name).where(
-                ItemTag.owner_user_id == user_id,
-                ItemTag.item_kind == "token",
-                ItemTag.item_id == item.id,
-            ).order_by(ItemTag.tag_name)
-        )).scalars().all()
+        (
+            await session.execute(
+                select(ItemTag.tag_name)
+                .where(
+                    ItemTag.owner_user_id == user_id,
+                    ItemTag.item_kind == "token",
+                    ItemTag.item_id == item.id,
+                )
+                .order_by(ItemTag.tag_name)
+            )
+        )
+        .scalars()
+        .all()
     )
     return LookupResult(
-        item_id=item.id, status=item.status, confidence=item.confidence,
-        translations=translations, primary=primary,
-        note=note_row.note_text if note_row else None, tags=tags,
+        item_id=item.id,
+        status=item.status,
+        confidence=item.confidence,
+        translations=translations,
+        primary=primary,
+        note=note_row.note_text if note_row else None,
+        tags=tags,
     )
 
 
 async def _list_tags(session: AsyncSession, *, user_id: uuid.UUID, item_id: uuid.UUID) -> list[str]:
     return list(
-        (await session.execute(
-            select(ItemTag.tag_name).where(
-                ItemTag.owner_user_id == user_id,
-                ItemTag.item_kind == "token",
-                ItemTag.item_id == item_id,
-            ).order_by(ItemTag.tag_name)
-        )).scalars().all()
+        (
+            await session.execute(
+                select(ItemTag.tag_name)
+                .where(
+                    ItemTag.owner_user_id == user_id,
+                    ItemTag.item_kind == "token",
+                    ItemTag.item_id == item_id,
+                )
+                .order_by(ItemTag.tag_name)
+            )
+        )
+        .scalars()
+        .all()
     )
 
 
 async def add_translation(
-    session: AsyncSession, *, user_id: uuid.UUID, kind: str, item_id: uuid.UUID,
-    target_language_code: str, translation_text: str, is_primary: bool, source_type: str,
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    kind: str,
+    item_id: uuid.UUID,
+    target_language_code: str,
+    translation_text: str,
+    is_primary: bool,
+    source_type: str,
 ) -> PersonalTranslation:
     _check_kind(kind)
     await _owned_item(session, user_id=user_id, item_id=item_id)
@@ -175,9 +230,13 @@ async def add_translation(
             .values(is_primary=False)
         )
     row = PersonalTranslation(
-        owner_user_id=user_id, item_kind="token", item_id=item_id,
-        target_language_code=target_language_code, translation_text=translation_text,
-        is_primary=is_primary, source_type=source_type,
+        owner_user_id=user_id,
+        item_kind="token",
+        item_id=item_id,
+        target_language_code=target_language_code,
+        translation_text=translation_text,
+        is_primary=is_primary,
+        source_type=source_type,
     )
     session.add(row)
     await session.commit()
@@ -185,19 +244,25 @@ async def add_translation(
 
 
 async def put_note(
-    session: AsyncSession, *, user_id: uuid.UUID, kind: str, item_id: uuid.UUID, note_text: str,
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    kind: str,
+    item_id: uuid.UUID,
+    note_text: str,
 ) -> PersonalNote:
     _check_kind(kind)
     await _owned_item(session, user_id=user_id, item_id=item_id)
     stmt = (
         pg_insert(PersonalNote)
         .values(
-            id=uuid.uuid4(), owner_user_id=user_id, item_kind="token",
-            item_id=item_id, note_text=note_text,
+            id=uuid.uuid4(),
+            owner_user_id=user_id,
+            item_kind="token",
+            item_id=item_id,
+            note_text=note_text,
         )
-        .on_conflict_do_update(
-            constraint="uq_personal_notes_item", set_={"note_text": note_text}
-        )
+        .on_conflict_do_update(constraint="uq_personal_notes_item", set_={"note_text": note_text})
         .returning(PersonalNote)
     )
     row = (await session.execute(stmt)).scalar_one()
@@ -206,15 +271,23 @@ async def put_note(
 
 
 async def add_tag(
-    session: AsyncSession, *, user_id: uuid.UUID, kind: str, item_id: uuid.UUID, tag_name: str,
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    kind: str,
+    item_id: uuid.UUID,
+    tag_name: str,
 ) -> list[str]:
     _check_kind(kind)
     await _owned_item(session, user_id=user_id, item_id=item_id)
     await session.execute(
         pg_insert(ItemTag)
         .values(
-            id=uuid.uuid4(), owner_user_id=user_id, item_kind="token",
-            item_id=item_id, tag_name=tag_name,
+            id=uuid.uuid4(),
+            owner_user_id=user_id,
+            item_kind="token",
+            item_id=item_id,
+            tag_name=tag_name,
         )
         .on_conflict_do_nothing(constraint="uq_item_tags")
     )
@@ -223,7 +296,12 @@ async def add_tag(
 
 
 async def remove_tag(
-    session: AsyncSession, *, user_id: uuid.UUID, kind: str, item_id: uuid.UUID, tag_name: str,
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    kind: str,
+    item_id: uuid.UUID,
+    tag_name: str,
 ) -> list[str]:
     _check_kind(kind)
     await _owned_item(session, user_id=user_id, item_id=item_id)

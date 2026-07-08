@@ -5,6 +5,7 @@ Revises: 0006_reader_state
 Create Date: 2026-07-07 00:00:00.000000
 
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -29,18 +30,26 @@ def upgrade() -> None:
         sa.Column("translation_text", sa.Text(), nullable=False),
         sa.Column("is_primary", sa.Boolean(), nullable=False),
         sa.Column("source_type", sa.String(length=16), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["owner_user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
-        "ix_personal_translations_item", "personal_translations",
+        "ix_personal_translations_item",
+        "personal_translations",
         ["owner_user_id", "item_kind", "item_id"],
     )
     op.create_index(
-        "uq_personal_translations_primary", "personal_translations",
+        "uq_personal_translations_primary",
+        "personal_translations",
         ["owner_user_id", "item_kind", "item_id", "target_language_code"],
-        unique=True, postgresql_where=sa.text("is_primary"),
+        unique=True,
+        postgresql_where=sa.text("is_primary"),
     )
 
     op.create_table(
@@ -50,8 +59,18 @@ def upgrade() -> None:
         sa.Column("item_kind", sa.String(length=16), nullable=False),
         sa.Column("item_id", sa.Uuid(), nullable=False),
         sa.Column("note_text", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["owner_user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("owner_user_id", "item_kind", "item_id", name="uq_personal_notes_item"),
@@ -66,7 +85,9 @@ def upgrade() -> None:
         sa.Column("tag_name", sa.String(length=64), nullable=False),
         sa.ForeignKeyConstraint(["owner_user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("owner_user_id", "item_kind", "item_id", "tag_name", name="uq_item_tags"),
+        sa.UniqueConstraint(
+            "owner_user_id", "item_kind", "item_id", "tag_name", name="uq_item_tags"
+        ),
     )
 
 
