@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { vocabularyApi } from '@/api/vocabulary'
-import type { ItemKind, WriteStatus } from '@/api/vocabulary'
+import type { WriteStatus } from '@/api/vocabulary'
 
 export function wordLookupKey(lang: string, text: string, target: string) {
   return ['word-card', lang, text, target] as const
@@ -45,10 +45,22 @@ export function useWordCardMutations(opts: {
 
   const saveTranslation = useMutation({
     mutationFn: (v: { itemId: string; text: string; source?: 'user' | 'ai' | 'dictionary' }) =>
-      vocabularyApi.addTranslation('token' as ItemKind, v.itemId, {
+      vocabularyApi.addTranslation('token', v.itemId, {
         target_language_code: opts.target, translation_text: v.text,
-        is_primary: true, source_type: v.source ?? 'user',
+        source_type: v.source ?? 'user',
       }),
+    onSuccess: invalidate,
+  })
+
+  const updateTranslation = useMutation({
+    mutationFn: (v: { itemId: string; translationId: string; text: string }) =>
+      vocabularyApi.updateTranslation('token', v.itemId, v.translationId, v.text),
+    onSuccess: invalidate,
+  })
+
+  const deleteTranslation = useMutation({
+    mutationFn: (v: { itemId: string; translationId: string }) =>
+      vocabularyApi.deleteTranslation('token', v.itemId, v.translationId),
     onSuccess: invalidate,
   })
 
@@ -68,5 +80,5 @@ export function useWordCardMutations(opts: {
     onSuccess: invalidate,
   })
 
-  return { setStatus, saveTranslation, saveNote, addTag, removeTag }
+  return { setStatus, saveTranslation, updateTranslation, deleteTranslation, saveNote, addTag, removeTag }
 }

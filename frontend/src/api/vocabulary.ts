@@ -41,10 +41,19 @@ export const vocabularyApi = {
     api<ItemState>(`/api/vocabulary/items/${kind}/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   addTranslation: (kind: ItemKind, id: string, body: {
     target_language_code: string; translation_text: string
-    is_primary?: boolean; source_type?: SourceType
+    source_type?: SourceType
   }) => api<TranslationOut>(`/api/vocabulary/items/${kind}/${id}/translations`, {
     method: 'POST', body: JSON.stringify(body),
   }),
+  updateTranslation: (kind: ItemKind, id: string, translationId: string, translation_text: string) =>
+    api<TranslationOut>(`/api/vocabulary/items/${kind}/${id}/translations/${translationId}`, {
+      method: 'PATCH', body: JSON.stringify({ translation_text }),
+    }),
+  deleteTranslation: (kind: ItemKind, id: string, translationId: string) =>
+    api<{ translations: TranslationOut[] }>(
+      `/api/vocabulary/items/${kind}/${id}/translations/${translationId}`,
+      { method: 'DELETE' },
+    ),
   putNote: (kind: ItemKind, id: string, note_text: string) =>
     api<{ note: string }>(`/api/vocabulary/items/${kind}/${id}/notes`, {
       method: 'PUT', body: JSON.stringify({ note_text }),

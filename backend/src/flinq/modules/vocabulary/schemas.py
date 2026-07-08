@@ -67,8 +67,15 @@ class ItemStateResponse(BaseModel):
 class AddTranslationRequest(BaseModel):
     target_language_code: LangCode
     translation_text: str = Field(min_length=1, max_length=512)
-    is_primary: bool = True
     source_type: Literal["user", "ai", "dictionary"] = "user"
+
+
+class UpdateTranslationRequest(BaseModel):
+    translation_text: str = Field(min_length=1, max_length=512)
+
+
+class TranslationListResponse(BaseModel):
+    translations: list[TranslationOut]
 
 
 class PutNoteRequest(BaseModel):

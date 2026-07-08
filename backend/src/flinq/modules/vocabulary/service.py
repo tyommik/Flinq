@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,14 @@ class UnsupportedKind(Exception):  # noqa: N818 -- name fixed by Task 2 interfac
 
 class ItemNotFound(Exception):  # noqa: N818 -- name fixed by Task 2 interface contract
     """Item does not exist or is not owned by the user."""
+
+
+class TranslationNotFound(Exception):  # noqa: N818 -- matches sibling exception naming
+    """Translation row does not exist or is not owned by the user/item."""
+
+
+class DuplicateTranslation(Exception):  # noqa: N818 -- matches sibling exception naming
+    """Another variant with the same text exists for this item/target."""
 
 
 @dataclass
@@ -106,6 +114,57 @@ async def patch_item(
     return item
 
 
+async def _list_tags(session: AsyncSession, *, user_id: uuid.UUID, item_id: uuid.UUID) -> list[str]:
+    return list(
+        (
+            await session.execute(
+                select(ItemTag.tag_name)
+                .where(
+                    ItemTag.owner_user_id == user_id,
+                    ItemTag.item_kind == "token",
+                    ItemTag.item_id == item_id,
+                )
+                .order_by(ItemTag.tag_name)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def _owned_translation(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    item_id: uuid.UUID,
+    translation_id: uuid.UUID,
+) -> PersonalTranslation:
+    row = await session.get(PersonalTranslation, translation_id)
+    if row is None or row.owner_user_id != user_id or row.item_id != item_id:
+        raise TranslationNotFound(str(translation_id))
+    return row
+
+
+async def _item_translations(
+    session: AsyncSession, *, user_id: uuid.UUID, item_id: uuid.UUID
+) -> list[PersonalTranslation]:
+    return list(
+        (
+            await session.execute(
+                select(PersonalTranslation)
+                .where(
+                    PersonalTranslation.owner_user_id == user_id,
+                    PersonalTranslation.item_kind == "token",
+                    PersonalTranslation.item_id == item_id,
+                )
+                .order_by(PersonalTranslation.is_primary.desc(), PersonalTranslation.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 async def lookup(
     session: AsyncSession,
     *,
@@ -128,21 +187,7 @@ async def lookup(
             note=None,
             tags=[],
         )
-    translations = list(
-        (
-            await session.execute(
-                select(PersonalTranslation)
-                .where(
-                    PersonalTranslation.owner_user_id == user_id,
-                    PersonalTranslation.item_kind == "token",
-                    PersonalTranslation.item_id == item.id,
-                )
-                .order_by(PersonalTranslation.is_primary.desc(), PersonalTranslation.created_at)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    translations = await _item_translations(session, user_id=user_id, item_id=item.id)
     primary = next(
         (
             t
@@ -160,21 +205,7 @@ async def lookup(
             )
         )
     ).scalar_one_or_none()
-    tags = list(
-        (
-            await session.execute(
-                select(ItemTag.tag_name)
-                .where(
-                    ItemTag.owner_user_id == user_id,
-                    ItemTag.item_kind == "token",
-                    ItemTag.item_id == item.id,
-                )
-                .order_by(ItemTag.tag_name)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    tags = await _list_tags(session, user_id=user_id, item_id=item.id)
     return LookupResult(
         item_id=item.id,
         status=item.status,
@@ -186,24 +217,6 @@ async def lookup(
     )
 
 
-async def _list_tags(session: AsyncSession, *, user_id: uuid.UUID, item_id: uuid.UUID) -> list[str]:
-    return list(
-        (
-            await session.execute(
-                select(ItemTag.tag_name)
-                .where(
-                    ItemTag.owner_user_id == user_id,
-                    ItemTag.item_kind == "token",
-                    ItemTag.item_id == item_id,
-                )
-                .order_by(ItemTag.tag_name)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-
 async def add_translation(
     session: AsyncSession,
     *,
@@ -212,35 +225,119 @@ async def add_translation(
     item_id: uuid.UUID,
     target_language_code: str,
     translation_text: str,
-    is_primary: bool,
     source_type: str,
-) -> PersonalTranslation:
+) -> tuple[PersonalTranslation, bool]:
+    """Add a variant; returns (row, created).
+
+    Dedupes by exact text: an existing row with the same text is returned
+    as-is (created=False). `is_primary` is computed server-side — the first
+    variant for the (owner, item, target) becomes primary (§2.2 of the spec).
+    """
     _check_kind(kind)
     await _owned_item(session, user_id=user_id, item_id=item_id)
-    if is_primary:
+    scope = (
+        PersonalTranslation.owner_user_id == user_id,
+        PersonalTranslation.item_kind == "token",
+        PersonalTranslation.item_id == item_id,
+        PersonalTranslation.target_language_code == target_language_code,
+    )
+    existing = (
         await session.execute(
-            update(PersonalTranslation)
-            .where(
-                PersonalTranslation.owner_user_id == user_id,
-                PersonalTranslation.item_kind == "token",
-                PersonalTranslation.item_id == item_id,
-                PersonalTranslation.target_language_code == target_language_code,
-                PersonalTranslation.is_primary.is_(True),
+            select(PersonalTranslation).where(
+                *scope, PersonalTranslation.translation_text == translation_text
             )
-            .values(is_primary=False)
         )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing, False
+    has_any = (
+        await session.execute(select(PersonalTranslation.id).where(*scope).limit(1))
+    ).scalar_one_or_none() is not None
     row = PersonalTranslation(
         owner_user_id=user_id,
         item_kind="token",
         item_id=item_id,
         target_language_code=target_language_code,
         translation_text=translation_text,
-        is_primary=is_primary,
+        is_primary=not has_any,
         source_type=source_type,
     )
     session.add(row)
     await session.commit()
+    return row, True
+
+
+async def update_translation(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    kind: str,
+    item_id: uuid.UUID,
+    translation_id: uuid.UUID,
+    translation_text: str,
+) -> PersonalTranslation:
+    _check_kind(kind)
+    await _owned_item(session, user_id=user_id, item_id=item_id)
+    row = await _owned_translation(
+        session, user_id=user_id, item_id=item_id, translation_id=translation_id
+    )
+    if row.translation_text == translation_text:
+        return row
+    duplicate = (
+        await session.execute(
+            select(PersonalTranslation.id).where(
+                PersonalTranslation.owner_user_id == user_id,
+                PersonalTranslation.item_kind == "token",
+                PersonalTranslation.item_id == item_id,
+                PersonalTranslation.target_language_code == row.target_language_code,
+                PersonalTranslation.translation_text == translation_text,
+                PersonalTranslation.id != row.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if duplicate is not None:
+        raise DuplicateTranslation(translation_text)
+    row.translation_text = translation_text
+    row.source_type = "user"
+    await session.commit()
     return row
+
+
+async def delete_translation(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    kind: str,
+    item_id: uuid.UUID,
+    translation_id: uuid.UUID,
+) -> list[PersonalTranslation]:
+    _check_kind(kind)
+    await _owned_item(session, user_id=user_id, item_id=item_id)
+    row = await _owned_translation(
+        session, user_id=user_id, item_id=item_id, translation_id=translation_id
+    )
+    was_primary = row.is_primary
+    target = row.target_language_code
+    await session.delete(row)
+    await session.flush()
+    if was_primary:
+        successor = (
+            await session.execute(
+                select(PersonalTranslation)
+                .where(
+                    PersonalTranslation.owner_user_id == user_id,
+                    PersonalTranslation.item_kind == "token",
+                    PersonalTranslation.item_id == item_id,
+                    PersonalTranslation.target_language_code == target,
+                )
+                .order_by(PersonalTranslation.created_at, PersonalTranslation.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if successor is not None:
+            successor.is_primary = True
+    await session.commit()
+    return await _item_translations(session, user_id=user_id, item_id=item_id)
 
 
 async def put_note(

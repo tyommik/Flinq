@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { X, ChevronDown, ChevronUp, Check, Trash2 } from 'lucide-react'
 
 import { useWordLookup, useWordCardMutations } from './useWordCard'
+import { TranslationFields } from './TranslationFields'
+import { useReaderStore } from './readerStore'
 import { dictionaryApi } from '@/api/dictionary'
 import { aiApi } from '@/api/ai'
+import { ApiError } from '@/api/client'
 
 interface SelectedWord {
   t: string
@@ -18,12 +21,14 @@ interface Props {
   target: string
   lessonId: string
   onClose: () => void
+  sentenceText: string | null
 }
 
 const PILLS = [1, 2, 3, 4] as const
 
-export function WordCard({ word, lang, target, lessonId, onClose }: Props) {
-  const [expanded, setExpanded] = useState(false)
+export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }: Props) {
+  const expanded = useReaderStore((s) => s.wordCardExpanded)
+  const setExpanded = useReaderStore((s) => s.setWordCardExpanded)
   const text = word?.n ?? null
   const lookup = useWordLookup(lang, text, target)
   const m = useWordCardMutations({ lang, text: text ?? '', target, lessonId })
@@ -33,60 +38,38 @@ export function WordCard({ word, lang, target, lessonId, onClose }: Props) {
   const status = data?.status ?? 'new'
   const confidence = data?.confidence ?? null
 
-  // AI suggestion only for `new` words (needs lesson context; guarded).
+  // MUST be memoized: TranslationFields resets its per-field drafts when the
+  // `translations` prop identity changes, so a fresh `.filter()` array on
+  // every render would wipe the user's typing mid-edit.
+  const variants = useMemo(
+    () => (data?.translations.all ?? []).filter((t) => t.target_language_code === target),
+    [data, target],
+  )
+
+  // AI suggestion for `new` and `known` words (needs lesson context; guarded).
   // Gate on `data?.status` directly (not the defaulted `status` above) so we
   // never fire the AI query before the lookup has told us the real status —
   // `status` defaults to 'new' pre-lookup, which would otherwise race an
-  // AI call for a word that turns out to be tracked/known/ignored.
-  const wantAi = data?.status === 'new'
+  // AI call for a word that turns out to be tracked/ignored.
+  const wantAi = data?.status === 'new' || data?.status === 'known'
+  const aiContext = sentenceText ?? word?.t ?? ''
   const dict = useQuery({
     queryKey: ['dict', lang, target, text ?? ''],
     queryFn: () => dictionaryApi.lookup(lang, target, text as string),
     enabled: text !== null,
   })
   const ai = useQuery({
-    queryKey: ['ai-hint', lang, target, text ?? ''],
+    queryKey: ['ai-hint', lang, target, text ?? '', aiContext],
     queryFn: () => aiApi.translate({
-      surface_text: word!.t, context_text: word!.t,
+      surface_text: word!.t, context_text: aiContext,
       target_language_code: target, lesson_id: lessonId,
     }),
     enabled: text !== null && wantAi,
     retry: false,
   })
+  const aiDisabled = ai.error instanceof ApiError && ai.error.status === 503
 
-  // translation input (debounced save on change + save on blur)
-  const [draft, setDraft] = useState('')
-  const savedRef = useRef<string>('')
   const [saveError, setSaveError] = useState(false)
-  // Tracks whether the user has started editing the current word's translation,
-  // so an in-flight lookup that resolves *after* the user started typing never
-  // clobbers their unsaved input.
-  const dirtyRef = useRef(false)
-
-  // New word selected: reset local editing state before the fresh lookup lands.
-  useEffect(() => {
-    dirtyRef.current = false
-    setDraft('')
-    savedRef.current = ''
-  }, [text])
-
-  // Populate the draft from the server once lookup data is available — unless
-  // the user already started editing this word's translation.
-  useEffect(() => {
-    if (!data || dirtyRef.current) return
-    const primary = data.translations.primary?.text ?? ''
-    setDraft(primary)
-    savedRef.current = primary
-  }, [data, text])
-
-  useEffect(() => {
-    if (!word) return
-    const value = draft.trim()
-    if (!value || value === savedRef.current) return
-    const timer = setTimeout(() => { void saveTranslation() }, 800)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft])
 
   const [tagDraft, setTagDraft] = useState('')
   const [noteDraft, setNoteDraft] = useState('')
@@ -103,8 +86,7 @@ export function WordCard({ word, lang, target, lessonId, onClose }: Props) {
     const prev = noteSavedRef.current
     noteSavedRef.current = value
     try {
-      const id = itemId ?? (await ensureItem('tracked', 0))
-      await m.saveNote.mutateAsync({ itemId: id, note: value })
+      await withItem((id) => m.saveNote.mutateAsync({ itemId: id, note: value }))
       setSaveError(false)
     } catch {
       noteSavedRef.current = prev
@@ -142,35 +124,20 @@ export function WordCard({ word, lang, target, lessonId, onClose }: Props) {
     void m.setStatus.mutate({ itemId, status: nextStatus, confidence: conf })
   }
 
-  async function saveTranslation() {
-    const value = draft.trim()
-    if (!value || value === savedRef.current) return
-    const prev = savedRef.current
-    savedRef.current = value
-    try {
-      // new word: create tracked/0 first, then translate
-      const id = itemId ?? (await ensureItem('tracked', 0))
-      await m.saveTranslation.mutateAsync({ itemId: id, text: value, source: 'user' })
-      setSaveError(false)
-    } catch {
-      savedRef.current = prev
-      setSaveError(true)
-    }
+  async function withItem(fn: (id: string) => Promise<unknown>): Promise<void> {
+    const id = itemId ?? (await ensureItem('tracked', 0))
+    await fn(id)
   }
 
-  type Suggestion = { text: string; badge: '' | '✦' | '📘'; source: 'user' | 'ai' | 'dictionary' }
+  type Suggestion = { text: string; badge: '✦' | '📘'; source: 'ai' | 'dictionary' }
   const suggestions: Suggestion[] = [
-    ...(data?.translations.all ?? []).map((t) => ({ text: t.text, badge: '' as const, source: 'user' as const })),
     ...(ai.data?.hints ?? []).map((h) => ({ text: h.text, badge: '✦' as const, source: 'ai' as const })),
     ...(dict.data?.entries ?? []).flatMap((e) =>
       e.senses.map((s) => ({ text: s.translation, badge: '📘' as const, source: 'dictionary' as const })),
     ),
   ]
-
-  async function saveSuggestion(sug: Suggestion) {
-    const id = itemId ?? (await ensureItem('tracked', 0))
-    await m.saveTranslation.mutateAsync({ itemId: id, text: sug.text, source: sug.source })
-  }
+  const visibleSuggestions = expanded ? suggestions : suggestions.slice(0, 2)
+  const isIgnored = data?.status === 'ignored'
 
   return (
     <>
@@ -192,39 +159,67 @@ export function WordCard({ word, lang, target, lessonId, onClose }: Props) {
 
         <p className="text-2xl font-semibold">{word.t}</p>
 
-        {/* Saved translation */}
-        <label className="mt-4 block text-sm font-medium">Сохранённый перевод</label>
-        <input
-          className="mt-1 w-full rounded-md border border-border px-3 py-2 text-base"
-          placeholder="Введите новый перевод здесь"
-          value={draft}
-          onChange={(e) => { dirtyRef.current = true; setDraft(e.target.value) }}
-          onBlur={() => void saveTranslation()}
-          onKeyDown={(e) => { if (e.key === 'Enter') void saveTranslation() }}
-        />
-        {saveError && <p className="mt-1 text-sm text-destructive">Не удалось сохранить</p>}
+        {!isIgnored && (
+          <>
+            {/* Saved translation */}
+            <label className="mt-4 block text-sm font-medium">Перевод</label>
+            <TranslationFields
+              translations={variants}
+              onCreate={(value) => withItem((id) =>
+                m.saveTranslation.mutateAsync({ itemId: id, text: value, source: 'user' }))}
+              onUpdate={(translationId, value) => withItem((id) =>
+                m.updateTranslation.mutateAsync({ itemId: id, translationId, text: value }))}
+              onDelete={(translationId) => withItem((id) =>
+                m.deleteTranslation.mutateAsync({ itemId: id, translationId }))}
+            />
 
-        <div data-testid="word-card-suggestions" className="mt-4">
-          {suggestions.length > 0 && <p className="text-sm font-medium">Популярные переводы</p>}
-          <ul className="mt-1 space-y-1">
-            {suggestions.map((sug, idx) => (
-              <li key={`${sug.source}-${idx}`}
-                  className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm">
-                <span className="text-primary">
-                  {sug.text}{sug.badge && <span className="ml-2 text-muted-foreground">{sug.badge}</span>}
-                </span>
-                <button
-                  type="button" aria-label={`Добавить перевод: ${sug.text}`}
-                  onClick={() => void saveSuggestion(sug)}
-                  className="rounded p-1 hover:bg-accent"
-                >+</button>
-              </li>
-            ))}
-          </ul>
-          {ai.isError && <p className="mt-1 text-sm text-destructive">Не удалось получить AI-перевод</p>}
-        </div>
+            <div data-testid="word-card-suggestions" className="mt-4">
+              {visibleSuggestions.length > 0 && <p className="text-sm font-medium">Подсказки</p>}
+              <ul className="mt-1 space-y-1">
+                {visibleSuggestions.map((sug, idx) => (
+                  <li key={`${sug.source}-${idx}`}
+                      className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm">
+                    <span className="text-primary">
+                      {sug.text}<span className="ml-2 text-muted-foreground">{sug.badge}</span>
+                    </span>
+                    <button
+                      type="button" aria-label={`Добавить перевод (${sug.badge}): ${sug.text}`}
+                      onClick={() => void withItem((id) =>
+                        m.saveTranslation.mutateAsync({ itemId: id, text: sug.text, source: sug.source }))}
+                      className="rounded p-1 hover:bg-accent"
+                    >+</button>
+                  </li>
+                ))}
+              </ul>
+              {aiDisabled && (
+                <p className="mt-1 text-sm text-muted-foreground">AI-переводы отключены</p>
+              )}
+              {ai.isError && !aiDisabled && (
+                <p className="mt-1 text-sm text-destructive">
+                  Не удалось получить AI-перевод{' '}
+                  <button
+                    type="button"
+                    onClick={() => void ai.refetch()}
+                    className="underline"
+                  >
+                    Повторить
+                  </button>
+                </p>
+              )}
+            </div>
+          </>
+        )}
 
-        {expanded && (
+        {isIgnored && (
+          <div data-testid="word-card-ignored" className="mt-4">
+            <p className="text-sm font-medium">Игнорируется</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Выберите уровень 1–4 или ✓, чтобы вернуть слово в изучение
+            </p>
+          </div>
+        )}
+
+        {expanded && !isIgnored && (
           <div data-testid="word-card-expanded" className="mt-4 space-y-4">
             <div>
               <p className="text-sm font-medium">Теги</p>
@@ -243,8 +238,7 @@ export function WordCard({ word, lang, target, lessonId, onClose }: Props) {
                   onChange={(e) => setTagDraft(e.target.value)}
                   onKeyDown={async (e) => {
                     if (e.key === 'Enter' && tagDraft.trim()) {
-                      const id = itemId ?? (await ensureItem('tracked', 0))
-                      await m.addTag.mutateAsync({ itemId: id, tag: tagDraft.trim() })
+                      await withItem((id) => m.addTag.mutateAsync({ itemId: id, tag: tagDraft.trim() }))
                       setTagDraft('')
                     }
                   }}
@@ -260,6 +254,7 @@ export function WordCard({ word, lang, target, lessonId, onClose }: Props) {
                 onChange={(e) => setNoteDraft(e.target.value)}
                 onBlur={() => void saveNote()}
               />
+              {saveError && <p className="mt-1 text-sm text-destructive">Не удалось сохранить</p>}
             </div>
           </div>
         )}
@@ -301,14 +296,16 @@ export function WordCard({ word, lang, target, lessonId, onClose }: Props) {
           </div>
         )}
 
-        <button
-          type="button"
-          aria-label={expanded ? 'Свернуть' : 'Развернуть'}
-          onClick={() => setExpanded((v) => !v)}
-          className="mx-auto mt-2 flex rounded-md p-1 text-muted-foreground hover:bg-accent"
-        >
-          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </button>
+        {!isIgnored && (
+          <button
+            type="button"
+            aria-label={expanded ? 'Свернуть' : 'Развернуть'}
+            onClick={() => setExpanded(!expanded)}
+            className="mx-auto mt-2 flex rounded-md p-1 text-muted-foreground hover:bg-accent"
+          >
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        )}
       </div>
     </>
   )

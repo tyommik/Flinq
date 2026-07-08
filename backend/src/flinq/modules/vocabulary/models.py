@@ -85,6 +85,15 @@ class PersonalTranslation(Base):
             unique=True,
             postgresql_where=text("is_primary"),
         ),
+        Index(
+            "uq_personal_translations_text",
+            "owner_user_id",
+            "item_kind",
+            "item_id",
+            "target_language_code",
+            "translation_text",
+            unique=True,
+        ),
     )
 
 

@@ -16,12 +16,14 @@ interface ReaderState {
   sidebarOpen: boolean
   lastBulkActionId: string | null
   font: FontPrefs
+  wordCardExpanded: boolean
   setMode: (m: ViewMode) => void
   setPageIndex: (i: number) => void
   setSentenceFlatIndex: (i: number) => void
   toggleSidebar: () => void
   setLastBulkActionId: (id: string | null) => void
   setFont: (f: Partial<FontPrefs>) => void
+  setWordCardExpanded: (v: boolean) => void
 }
 
 export const useReaderStore = create<ReaderState>()(
@@ -33,12 +35,14 @@ export const useReaderStore = create<ReaderState>()(
       sidebarOpen: false,
       lastBulkActionId: null,
       font: { size: 1, lineHeight: 1, serif: false },
+      wordCardExpanded: false,
       setMode: (mode) => set({ mode }),
       setPageIndex: (pageIndex) => set({ pageIndex }),
       setSentenceFlatIndex: (sentenceFlatIndex) => set({ sentenceFlatIndex }),
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       setLastBulkActionId: (lastBulkActionId) => set({ lastBulkActionId }),
       setFont: (f) => set((s) => ({ font: { ...s.font, ...f } })),
+      setWordCardExpanded: (wordCardExpanded) => set({ wordCardExpanded }),
     }),
     { name: 'flinq-reader-prefs', partialize: (s) => ({ font: s.font }) as Partial<ReaderState> },
   ),

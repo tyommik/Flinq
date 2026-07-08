@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LessonDetail } from '@/api/lessons'
@@ -31,8 +31,21 @@ vi.mock('@/api/reader', () => ({
   },
 }))
 
+vi.mock('@/api/vocabulary', () => ({
+  vocabularyApi: {
+    lookup: vi.fn(), createItem: vi.fn(), patchItem: vi.fn(),
+    addTranslation: vi.fn(), updateTranslation: vi.fn(), deleteTranslation: vi.fn(),
+    putNote: vi.fn(), addTag: vi.fn(), removeTag: vi.fn(),
+  },
+}))
+vi.mock('@/api/dictionary', () => ({ dictionaryApi: { lookup: vi.fn() } }))
+vi.mock('@/api/ai', () => ({ aiApi: { translate: vi.fn() } }))
+
 import { lessonsApi } from '@/api/lessons'
 import { readerApi } from '@/api/reader'
+import { vocabularyApi } from '@/api/vocabulary'
+import { dictionaryApi } from '@/api/dictionary'
+import { aiApi } from '@/api/ai'
 
 import { useReaderStore } from './readerStore'
 import { ReaderPage } from './ReaderPage'
@@ -103,6 +116,7 @@ describe('ReaderPage', () => {
       sidebarOpen: false,
       lastBulkActionId: null,
       font: { size: 1, lineHeight: 1, serif: false },
+      wordCardExpanded: false,
     })
   })
 
@@ -209,5 +223,26 @@ describe('ReaderPage', () => {
       expect(useReaderStore.getState().pageIndex).toBe(0)
     })
     await screen.findByTestId('page-view-slot')
+  })
+
+  it('opens the real WordCard when a word is clicked', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue(baseLesson)
+    vi.mocked(readerApi.content).mockResolvedValue(content)
+    vi.mocked(readerApi.statuses).mockResolvedValue({})
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    vi.mocked(dictionaryApi.lookup).mockResolvedValue({
+      entries: [], attribution: { source: '', license: '', url: '' }, external_links: [],
+    })
+    vi.mocked(aiApi.translate).mockResolvedValue({ hints: [], model: '', latency_ms: 0 })
+
+    renderPage()
+
+    await screen.findByTestId('page-view-slot')
+    fireEvent.click(await screen.findByRole('button', { name: 'Hello' }))
+    expect(await screen.findByTestId('word-card')).toBeInTheDocument()
+    expect(await screen.findByPlaceholderText('Введите новый перевод здесь')).toBeInTheDocument()
   })
 })

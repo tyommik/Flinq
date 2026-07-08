@@ -167,7 +167,90 @@ async def _tracked_item(user_id: uuid.UUID) -> uuid.UUID:
         return item.id
 
 
-async def test_add_translation_promotes_single_primary():
+async def test_add_translation_first_is_primary_next_are_not():
+    async with session_scope() as s:
+        user_id = await _make_user(s)
+    item_id = await _tracked_item(user_id)
+    async with session_scope() as s:
+        first, created = await service.add_translation(
+            s,
+            user_id=user_id,
+            kind="token",
+            item_id=item_id,
+            target_language_code="ru",
+            translation_text="первый",
+            source_type="user",
+        )
+        assert created is True and first.is_primary is True
+    async with session_scope() as s:
+        second, created = await service.add_translation(
+            s,
+            user_id=user_id,
+            kind="token",
+            item_id=item_id,
+            target_language_code="ru",
+            translation_text="второй",
+            source_type="user",
+        )
+        assert created is True and second.is_primary is False
+
+
+async def test_add_translation_dedupes_by_text():
+    async with session_scope() as s:
+        user_id = await _make_user(s)
+    item_id = await _tracked_item(user_id)
+    async with session_scope() as s:
+        first, _ = await service.add_translation(
+            s,
+            user_id=user_id,
+            kind="token",
+            item_id=item_id,
+            target_language_code="ru",
+            translation_text="первый",
+            source_type="user",
+        )
+    async with session_scope() as s:
+        again, created = await service.add_translation(
+            s,
+            user_id=user_id,
+            kind="token",
+            item_id=item_id,
+            target_language_code="ru",
+            translation_text="первый",
+            source_type="dictionary",
+        )
+    assert created is False and again.id == first.id
+
+
+async def test_update_translation_changes_text_and_source():
+    async with session_scope() as s:
+        user_id = await _make_user(s)
+    item_id = await _tracked_item(user_id)
+    async with session_scope() as s:
+        row, _ = await service.add_translation(
+            s,
+            user_id=user_id,
+            kind="token",
+            item_id=item_id,
+            target_language_code="ru",
+            translation_text="первый",
+            source_type="dictionary",
+        )
+        row_id = row.id
+    async with session_scope() as s:
+        updated = await service.update_translation(
+            s,
+            user_id=user_id,
+            kind="token",
+            item_id=item_id,
+            translation_id=row_id,
+            translation_text="поправленный",
+        )
+        assert updated.translation_text == "поправленный"
+        assert updated.source_type == "user"
+
+
+async def test_update_translation_duplicate_text_raises():
     async with session_scope() as s:
         user_id = await _make_user(s)
     item_id = await _tracked_item(user_id)
@@ -179,7 +262,53 @@ async def test_add_translation_promotes_single_primary():
             item_id=item_id,
             target_language_code="ru",
             translation_text="первый",
-            is_primary=True,
+            source_type="user",
+        )
+        second, _ = await service.add_translation(
+            s,
+            user_id=user_id,
+            kind="token",
+            item_id=item_id,
+            target_language_code="ru",
+            translation_text="второй",
+            source_type="user",
+        )
+        second_id = second.id
+    async with session_scope() as s:
+        with pytest.raises(service.DuplicateTranslation):
+            await service.update_translation(
+                s,
+                user_id=user_id,
+                kind="token",
+                item_id=item_id,
+                translation_id=second_id,
+                translation_text="первый",
+            )
+
+
+async def test_delete_primary_promotes_earliest_remaining():
+    async with session_scope() as s:
+        user_id = await _make_user(s)
+    item_id = await _tracked_item(user_id)
+    async with session_scope() as s:
+        first, _ = await service.add_translation(
+            s,
+            user_id=user_id,
+            kind="token",
+            item_id=item_id,
+            target_language_code="ru",
+            translation_text="первый",
+            source_type="user",
+        )
+        first_id = first.id
+    async with session_scope() as s:
+        await service.add_translation(
+            s,
+            user_id=user_id,
+            kind="token",
+            item_id=item_id,
+            target_language_code="ru",
+            translation_text="второй",
             source_type="user",
         )
     async with session_scope() as s:
@@ -189,20 +318,46 @@ async def test_add_translation_promotes_single_primary():
             kind="token",
             item_id=item_id,
             target_language_code="ru",
-            translation_text="второй",
-            is_primary=True,
+            translation_text="третий",
             source_type="user",
         )
     async with session_scope() as s:
-        res = await service.lookup(
+        remaining = await service.delete_translation(
             s,
             user_id=user_id,
-            language_code="pt",
-            text="cada",
-            target_language_code="ru",
+            kind="token",
+            item_id=item_id,
+            translation_id=first_id,
         )
-    assert res.primary is not None and res.primary.translation_text == "второй"
-    assert sum(1 for t in res.translations if t.is_primary) == 1
+    texts = [(t.translation_text, t.is_primary) for t in remaining]
+    assert texts == [("второй", True), ("третий", False)]
+
+
+async def test_delete_translation_foreign_row_raises():
+    async with session_scope() as s:
+        user_id = await _make_user(s)
+        other_id = await _make_user(s)
+    item_id = await _tracked_item(user_id)
+    async with session_scope() as s:
+        row, _ = await service.add_translation(
+            s,
+            user_id=user_id,
+            kind="token",
+            item_id=item_id,
+            target_language_code="ru",
+            translation_text="первый",
+            source_type="user",
+        )
+        row_id = row.id
+    async with session_scope() as s:
+        with pytest.raises(service.ItemNotFound):
+            await service.delete_translation(
+                s,
+                user_id=other_id,
+                kind="token",
+                item_id=item_id,
+                translation_id=row_id,
+            )
 
 
 async def test_put_note_upserts():

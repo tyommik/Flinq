@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Literal, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.core.db import get_session
@@ -21,8 +21,10 @@ from flinq.modules.vocabulary.schemas import (
     PatchItemRequest,
     PutNoteRequest,
     TagsResponse,
+    TranslationListResponse,
     TranslationOut,
     TranslationsBlock,
+    UpdateTranslationRequest,
 )
 
 router = APIRouter(prefix="/api/vocabulary", tags=["vocabulary"])
@@ -96,7 +98,7 @@ async def create_item(
     return ItemStateResponse(item_id=item.id, status=item.status, confidence=item.confidence)
 
 
-def _resolve(kind: str, item_id: uuid.UUID) -> None:
+def _resolve(kind: str) -> None:
     if kind != "token":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unsupported item kind")
 
@@ -110,7 +112,7 @@ async def patch_item(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ItemStateResponse:
     user_id = _require_user(request)
-    _resolve(kind, item_id)
+    _resolve(kind)
     try:
         item = await service.patch_item(
             session,
@@ -125,30 +127,86 @@ async def patch_item(
     return ItemStateResponse(item_id=item.id, status=item.status, confidence=item.confidence)
 
 
-@router.post("/items/{kind}/{item_id}/translations", status_code=201, response_model=TranslationOut)
+@router.post("/items/{kind}/{item_id}/translations", response_model=TranslationOut)
 async def add_translation(
     request: Request,
+    response: Response,
     kind: Kind,
     item_id: uuid.UUID,
     body: AddTranslationRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TranslationOut:
     user_id = _require_user(request)
-    _resolve(kind, item_id)
+    _resolve(kind)
     try:
-        row = await service.add_translation(
+        row, created = await service.add_translation(
             session,
             user_id=user_id,
             kind=kind,
             item_id=item_id,
             target_language_code=body.target_language_code,
             translation_text=body.translation_text,
-            is_primary=body.is_primary,
             source_type=body.source_type,
         )
     except service.ItemNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND) from None
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return _translation_out(row)
+
+
+@router.patch(
+    "/items/{kind}/{item_id}/translations/{translation_id}", response_model=TranslationOut
+)
+async def update_translation(
+    request: Request,
+    kind: Kind,
+    item_id: uuid.UUID,
+    translation_id: uuid.UUID,
+    body: UpdateTranslationRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TranslationOut:
+    user_id = _require_user(request)
+    _resolve(kind)
+    try:
+        row = await service.update_translation(
+            session,
+            user_id=user_id,
+            kind=kind,
+            item_id=item_id,
+            translation_id=translation_id,
+            translation_text=body.translation_text,
+        )
+    except (service.ItemNotFound, service.TranslationNotFound):
+        raise HTTPException(status.HTTP_404_NOT_FOUND) from None
+    except service.DuplicateTranslation:
+        raise HTTPException(status.HTTP_409_CONFLICT, "duplicate translation text") from None
+    return _translation_out(row)
+
+
+@router.delete(
+    "/items/{kind}/{item_id}/translations/{translation_id}",
+    response_model=TranslationListResponse,
+)
+async def delete_translation(
+    request: Request,
+    kind: Kind,
+    item_id: uuid.UUID,
+    translation_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TranslationListResponse:
+    user_id = _require_user(request)
+    _resolve(kind)
+    try:
+        rows = await service.delete_translation(
+            session,
+            user_id=user_id,
+            kind=kind,
+            item_id=item_id,
+            translation_id=translation_id,
+        )
+    except (service.ItemNotFound, service.TranslationNotFound):
+        raise HTTPException(status.HTTP_404_NOT_FOUND) from None
+    return TranslationListResponse(translations=[_translation_out(t) for t in rows])
 
 
 @router.put("/items/{kind}/{item_id}/notes", response_model=NoteResponse)
@@ -160,7 +218,7 @@ async def put_note(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> NoteResponse:
     user_id = _require_user(request)
-    _resolve(kind, item_id)
+    _resolve(kind)
     try:
         row = await service.put_note(
             session,
@@ -183,7 +241,7 @@ async def add_tag(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TagsResponse:
     user_id = _require_user(request)
-    _resolve(kind, item_id)
+    _resolve(kind)
     try:
         tags = await service.add_tag(
             session,
@@ -206,7 +264,7 @@ async def remove_tag(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TagsResponse:
     user_id = _require_user(request)
-    _resolve(kind, item_id)
+    _resolve(kind)
     try:
         tags = await service.remove_tag(
             session,

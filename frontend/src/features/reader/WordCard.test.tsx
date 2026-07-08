@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@/api/vocabulary', () => ({
   vocabularyApi: {
     lookup: vi.fn(), createItem: vi.fn(), patchItem: vi.fn(),
-    addTranslation: vi.fn(), putNote: vi.fn(), addTag: vi.fn(), removeTag: vi.fn(),
+    addTranslation: vi.fn(), updateTranslation: vi.fn(), deleteTranslation: vi.fn(),
+    putNote: vi.fn(), addTag: vi.fn(), removeTag: vi.fn(),
   },
 }))
 vi.mock('@/api/dictionary', () => ({ dictionaryApi: { lookup: vi.fn() } }))
@@ -14,15 +15,18 @@ vi.mock('@/api/ai', () => ({ aiApi: { translate: vi.fn() } }))
 import { vocabularyApi } from '@/api/vocabulary'
 import { dictionaryApi } from '@/api/dictionary'
 import { aiApi } from '@/api/ai'
+import { ApiError } from '@/api/client'
+import { useReaderStore } from './readerStore'
 import { WordCard } from './WordCard'
 
-function renderCard() {
+function renderCard(sentenceText: string | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
       <WordCard
         word={{ t: 'cada', n: 'cada', i: 0 }}
         lang="pt" target="ru" lessonId="L1" onClose={() => {}}
+        sentenceText={sentenceText}
       />
     </QueryClientProvider>,
   )
@@ -33,6 +37,9 @@ describe('WordCard core', () => {
     vi.clearAllMocks()
     vi.mocked(dictionaryApi.lookup).mockResolvedValue({ entries: [], attribution: { source: '', license: '', url: '' }, external_links: [] })
     vi.mocked(aiApi.translate).mockResolvedValue({ hints: [], model: '', latency_ms: 0 })
+    // wordCardExpanded lives in the module-level reader store now (not local
+    // useState), so it leaks across tests in this file unless reset.
+    useReaderStore.setState({ wordCardExpanded: false })
   })
 
   it('creates a tracked/0 item when a translation is typed on a new word', async () => {
@@ -46,7 +53,7 @@ describe('WordCard core', () => {
     renderCard()
     const input = await screen.findByPlaceholderText('Введите новый перевод здесь')
     fireEvent.change(input, { target: { value: 'каждый' } })
-    fireEvent.blur(input)
+    fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() => {
       expect(vocabularyApi.createItem).toHaveBeenCalledWith(
@@ -114,7 +121,7 @@ describe('WordCard core', () => {
     vi.mocked(vocabularyApi.addTranslation).mockResolvedValue({ id: 'T1', text: 'каждый', target_language_code: 'ru', is_primary: true, source_type: 'dictionary' })
 
     renderCard()
-    const add = await screen.findByRole('button', { name: 'Добавить перевод: каждый' })
+    const add = await screen.findByRole('button', { name: 'Добавить перевод (📘): каждый' })
     fireEvent.click(add)
     await waitFor(() => {
       expect(vocabularyApi.addTranslation).toHaveBeenCalledWith(
@@ -123,15 +130,63 @@ describe('WordCard core', () => {
     })
   })
 
-  it('does not call AI for a non-new word', async () => {
+  it('requests AI for known words but not for tracked ones', async () => {
     vi.mocked(vocabularyApi.lookup).mockResolvedValue({
       item_id: 'I1', status: 'known', confidence: null,
       translations: { primary: null, all: [] }, note: null, tags: [],
     })
     renderCard()
-    await screen.findByText('cada')
-    const { aiApi } = await import('@/api/ai')
+    await waitFor(() => expect(aiApi.translate).toHaveBeenCalled())
+
+    vi.clearAllMocks()
+    vi.mocked(dictionaryApi.lookup).mockResolvedValue({ entries: [], attribution: { source: '', license: '', url: '' }, external_links: [] })
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: 'I2', status: 'tracked', confidence: 1,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    renderCard()
+    await screen.findAllByText('cada')
+    await new Promise((r) => setTimeout(r, 50))
     expect(aiApi.translate).not.toHaveBeenCalled()
+  })
+
+  it('passes the sentence as AI context when provided', async () => {
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    renderCard('Cada casa tem uma porta.')
+    await waitFor(() => {
+      expect(aiApi.translate).toHaveBeenCalledWith(
+        expect.objectContaining({ surface_text: 'cada', context_text: 'Cada casa tem uma porta.' }),
+      )
+    })
+  })
+
+  it('shows an info note without retry when AI is disabled (503)', async () => {
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    vi.mocked(aiApi.translate).mockRejectedValue(new ApiError(503, 'disabled'))
+    renderCard()
+    await screen.findByText('AI-переводы отключены')
+    expect(screen.queryByText('Не удалось получить AI-перевод')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument()
+  })
+
+  it('shows an inline error with retry on a real AI failure', async () => {
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    vi.mocked(aiApi.translate)
+      .mockRejectedValueOnce(new ApiError(500, 'boom'))
+      .mockResolvedValueOnce({ hints: [{ text: 'каждый' }], model: 'm', latency_ms: 1 })
+    renderCard()
+    await screen.findByText('Не удалось получить AI-перевод')
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    await screen.findByText(/каждый/)
   })
 
   it('surfaces an inline error and retries on the next blur after a failed save', async () => {
@@ -147,7 +202,7 @@ describe('WordCard core', () => {
     renderCard()
     const input = await screen.findByPlaceholderText('Введите новый перевод здесь')
     fireEvent.change(input, { target: { value: 'каждый' } })
-    fireEvent.blur(input)
+    fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() => {
       expect(vocabularyApi.createItem).toHaveBeenCalledTimes(1)
@@ -156,7 +211,7 @@ describe('WordCard core', () => {
     expect(vocabularyApi.addTranslation).not.toHaveBeenCalled()
 
     // Retry: the ref was reset on failure, so the next blur re-attempts the save.
-    fireEvent.blur(input)
+    fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() => {
       expect(vocabularyApi.createItem).toHaveBeenCalledTimes(2)
@@ -196,5 +251,71 @@ describe('WordCard core', () => {
     await waitFor(() => {
       expect(vocabularyApi.putNote).toHaveBeenCalledWith('token', 'I1', 'моя заметка')
     })
+  })
+
+  it('renders saved variants as fields and keeps them out of suggestions', async () => {
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: 'I1', status: 'tracked', confidence: 1,
+      translations: {
+        primary: { id: 'T1', text: 'первый', target_language_code: 'ru', is_primary: true, source_type: 'user' },
+        all: [
+          { id: 'T1', text: 'первый', target_language_code: 'ru', is_primary: true, source_type: 'user' },
+          { id: 'T2', text: 'второй', target_language_code: 'ru', is_primary: false, source_type: 'user' },
+        ],
+      },
+      note: null, tags: [],
+    })
+    renderCard()
+    expect(await screen.findByDisplayValue('первый')).toBeInTheDocument()
+    expect(await screen.findByDisplayValue('второй')).toBeInTheDocument()
+    expect(screen.queryByText('Подсказки')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Добавить перевод .*: первый/ })).not.toBeInTheDocument()
+  })
+
+  it('deletes a variant via its ✕ button', async () => {
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: 'I1', status: 'tracked', confidence: 1,
+      translations: {
+        primary: { id: 'T1', text: 'первый', target_language_code: 'ru', is_primary: true, source_type: 'user' },
+        all: [{ id: 'T1', text: 'первый', target_language_code: 'ru', is_primary: true, source_type: 'user' }],
+      },
+      note: null, tags: [],
+    })
+    vi.mocked(vocabularyApi.deleteTranslation).mockResolvedValue({ translations: [] })
+    renderCard()
+    const del = await screen.findByRole('button', { name: 'Удалить вариант: первый' })
+    fireEvent.click(del)
+    await waitFor(() => {
+      expect(vocabularyApi.deleteTranslation).toHaveBeenCalledWith('token', 'I1', 'T1')
+    })
+  })
+
+  it('shows the ignored layout with a reactivation hint and no editing blocks', async () => {
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: 'I1', status: 'ignored', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    renderCard()
+    await screen.findByText('Игнорируется')
+    expect(screen.getByText('Выберите уровень 1–4 или ✓, чтобы вернуть слово в изучение')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Введите новый перевод здесь')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Развернуть' })).not.toBeInTheDocument()
+    // footer stays for reactivation
+    expect(screen.getByRole('button', { name: 'Уровень 1' })).toBeInTheDocument()
+  })
+
+  it('persists the expanded state across card reopen via the reader store', async () => {
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: 'I1', status: 'tracked', confidence: 1,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    const { unmount } = renderCard()
+    fireEvent.click(await screen.findByRole('button', { name: 'Развернуть' }))
+    await screen.findByText('Теги')
+    unmount()
+    renderCard()
+    expect(await screen.findByText('Теги')).toBeInTheDocument()
+    // restore the default for other tests
+    fireEvent.click(screen.getByRole('button', { name: 'Свернуть' }))
   })
 })

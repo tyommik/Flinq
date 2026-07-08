@@ -71,6 +71,14 @@ export function ReaderPage({ lang, lessonId }: Props) {
     [content],
   )
 
+  const selectedSentenceText = useMemo(() => {
+    if (!selectedWord) return null
+    const sentence = flatSentences.find((s) =>
+      s.tokens.some((tok) => isWord(tok) && tok.i === selectedWord.i),
+    )
+    return sentence?.text ?? null
+  }, [selectedWord, flatSentences])
+
   // Reader state (page/sentence position, the armed undo action, any visible
   // toast) is global zustand store state, not scoped to a lesson. Without an
   // explicit reset keyed on lessonId, navigating lesson A -> lesson B leaves
@@ -370,6 +378,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
         target={DEFAULT_TRANSLATION_LANG}
         lessonId={lessonId}
         onClose={() => setSelectedWord(null)}
+        sentenceText={selectedSentenceText}
       />
 
       {toastCount != null && (
