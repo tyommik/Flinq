@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { X, ChevronDown, ChevronUp, Check, Trash2 } from 'lucide-react'
+import { X, ChevronDown, ChevronUp } from 'lucide-react'
 
 import { useWordLookup, useWordCardMutations } from './useWordCard'
 import { TranslationFields } from './TranslationFields'
@@ -8,6 +8,7 @@ import { useReaderStore } from './readerStore'
 import { dictionaryApi } from '@/api/dictionary'
 import { aiApi } from '@/api/ai'
 import { ApiError } from '@/api/client'
+import { ConfidencePicker } from '@/components/ConfidencePicker'
 
 interface SelectedWord {
   t: string
@@ -19,12 +20,10 @@ interface Props {
   word: SelectedWord | null
   lang: string
   target: string
-  lessonId: string
+  lessonId: string | null
   onClose: () => void
   sentenceText: string | null
 }
-
-const PILLS = [1, 2, 3, 4] as const
 
 export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }: Props) {
   const expanded = useReaderStore((s) => s.wordCardExpanded)
@@ -62,7 +61,7 @@ export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }
     queryKey: ['ai-hint', lang, target, text ?? '', aiContext],
     queryFn: () => aiApi.translate({
       surface_text: word!.t, context_text: aiContext,
-      target_language_code: target, lesson_id: lessonId,
+      target_language_code: target, lesson_id: lessonId ?? undefined,
     }),
     enabled: text !== null && wantAi,
     retry: false,
@@ -263,36 +262,12 @@ export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }
             click always sees the real item id/status (never a stale "new word"
             default while the lookup is still in flight). */}
         {data && (
-          <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
-            <button
-              type="button" aria-label="Игнорировать" title="Игнорировать"
-              onClick={() => applyStatus('ignored', null)}
-              className={`rounded-full border p-2 hover:bg-accent ${status === 'ignored' ? 'border-foreground' : 'border-border'}`}
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-            <div className="flex items-center gap-1">
-              {PILLS.map((n) => (
-                <button
-                  key={n} type="button" aria-label={`Уровень ${n}`}
-                  onClick={() => applyStatus('tracked', n)}
-                  className={`flex h-8 w-8 items-center justify-center rounded-full border text-sm ${
-                    status === 'tracked' && confidence === n
-                      ? 'border-primary bg-primary/10 font-semibold'
-                      : 'border-border hover:bg-accent'
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button" aria-label="Изучено" title="Изучено"
-              onClick={() => applyStatus('known', null)}
-              className={`rounded-full border p-2 hover:bg-accent ${status === 'known' ? 'border-primary bg-primary/10' : 'border-border'}`}
-            >
-              <Check className="h-4 w-4" />
-            </button>
+          <div className="mt-4 border-t border-border pt-3">
+            <ConfidencePicker
+              status={status}
+              confidence={confidence}
+              onSelect={(s, c) => applyStatus(s, c)}
+            />
           </div>
         )}
 

@@ -19,13 +19,13 @@ import { ApiError } from '@/api/client'
 import { useReaderStore } from './readerStore'
 import { WordCard } from './WordCard'
 
-function renderCard(sentenceText: string | null = null) {
+function renderCard(sentenceText: string | null = null, lessonId: string | null = 'L1') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
       <WordCard
         word={{ t: 'cada', n: 'cada', i: 0 }}
-        lang="pt" target="ru" lessonId="L1" onClose={() => {}}
+        lang="pt" target="ru" lessonId={lessonId} onClose={() => {}}
         sentenceText={sentenceText}
       />
     </QueryClientProvider>,
@@ -317,5 +317,24 @@ describe('WordCard core', () => {
     expect(await screen.findByText('Теги')).toBeInTheDocument()
     // restore the default for other tests
     fireEvent.click(screen.getByRole('button', { name: 'Свернуть' }))
+  })
+
+  it('renders and omits lesson_id from the AI request when lessonId is null (vocabulary page reuse)', async () => {
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+
+    renderCard(null, null)
+
+    expect(await screen.findByTestId('word-card')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(aiApi.translate).toHaveBeenCalled()
+    })
+    // The request must not carry a real lesson_id value (it's omitted from
+    // the wire body via JSON.stringify dropping `undefined`).
+    expect(aiApi.translate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ lesson_id: expect.anything() }),
+    )
   })
 })

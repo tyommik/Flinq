@@ -23,12 +23,14 @@ export function useWordCardMutations(opts: {
   lang: string
   text: string
   target: string
-  lessonId: string
+  lessonId: string | null
 }) {
   const qc = useQueryClient()
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: wordLookupKey(opts.lang, opts.text, opts.target) })
-    void qc.invalidateQueries({ queryKey: ['reader-statuses', opts.lessonId] })
+    if (opts.lessonId !== null) {
+      void qc.invalidateQueries({ queryKey: ['reader-statuses', opts.lessonId] })
+    }
   }
 
   const setStatus = useMutation({

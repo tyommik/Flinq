@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -92,3 +93,44 @@ class AddTagRequest(BaseModel):
 
 class TagsResponse(BaseModel):
     tags: list[str]
+
+
+class PrimaryTranslationOut(BaseModel):
+    text: str
+    target_language_code: str
+
+
+class VocabListItemOut(BaseModel):
+    item_id: uuid.UUID
+    kind: Literal["token"]
+    text: str
+    status: Literal["tracked", "known", "ignored"]
+    confidence: int | None
+    primary_translation: PrimaryTranslationOut | None
+    tags: list[str]
+    pos: str | None
+    context: str | None
+    created_at: datetime
+
+
+class VocabListResponse(BaseModel):
+    items: list[VocabListItemOut]
+    total: int
+    page: int
+    page_size: int
+
+
+class BulkActionRequest(BaseModel):
+    item_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    action: Literal["set_known", "set_ignored", "delete", "add_tag"]
+    tag_name: str | None = Field(default=None, min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def _tag_required_for_add_tag(self) -> BulkActionRequest:
+        if self.action == "add_tag" and self.tag_name is None:
+            raise ValueError("tag_name required for add_tag")
+        return self
+
+
+class BulkActionResponse(BaseModel):
+    affected: int

@@ -27,7 +27,16 @@ export function AppTopBar() {
           >
             Библиотека
           </Link>
-          {/* Vocabulary tab — out of scope for this task; comes later */}
+          <Link
+            to="/learn/$lang/vocabulary"
+            params={{ lang }}
+            search={{ tab: 'all' }}
+            activeOptions={{ includeSearch: false }}
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent [&.active]:border-b-2 [&.active]:border-primary"
+            activeProps={{ className: 'active' }}
+          >
+            Словарь
+          </Link>
         </nav>
         <div className="ml-auto">
           <AvatarMenu />

@@ -39,6 +39,7 @@ class TokenItem(Base):
     token_text: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(16))  # tracked | known | ignored ('new' is computed)
     confidence: Mapped[int | None] = mapped_column(Integer)
+    added_by: Mapped[str] = mapped_column(String(16), default="user", server_default="user")
     created_from_occurrence_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -57,6 +58,7 @@ class TokenItem(Base):
             "(status = 'tracked') = (confidence IS NOT NULL)",
             name="ck_token_items_confidence_tracked",
         ),
+        CheckConstraint("added_by IN ('user', 'bulk')", name="ck_token_items_added_by"),
         Index("ix_token_items_user_lang", "user_id", "language_code"),
     )
 

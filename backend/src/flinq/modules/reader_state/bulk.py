@@ -57,6 +57,7 @@ async def bulk_mark_known(
                         "token_text": t,
                         "status": "known",
                         "confidence": None,
+                        "added_by": "bulk",
                     }
                     for t in sorted(texts)
                 ]
@@ -93,7 +94,11 @@ async def undo_bulk_action(
     if ids:
         result = await session.execute(
             delete(TokenItem)
-            .where(TokenItem.id.in_(ids), TokenItem.status == "known")
+            .where(
+                TokenItem.id.in_(ids),
+                TokenItem.status == "known",
+                TokenItem.added_by == "bulk",
+            )
             .returning(TokenItem.id)
         )
         undone = len(list(result.scalars().all()))

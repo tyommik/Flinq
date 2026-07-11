@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -14,17 +15,22 @@ from flinq.modules.vocabulary.models import PersonalTranslation
 from flinq.modules.vocabulary.schemas import (
     AddTagRequest,
     AddTranslationRequest,
+    BulkActionRequest,
+    BulkActionResponse,
     CreateItemRequest,
     ItemStateResponse,
     LookupResponse,
     NoteResponse,
     PatchItemRequest,
+    PrimaryTranslationOut,
     PutNoteRequest,
     TagsResponse,
     TranslationListResponse,
     TranslationOut,
     TranslationsBlock,
     UpdateTranslationRequest,
+    VocabListItemOut,
+    VocabListResponse,
 )
 
 router = APIRouter(prefix="/api/vocabulary", tags=["vocabulary"])
@@ -276,3 +282,91 @@ async def remove_tag(
     except service.ItemNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND) from None
     return TagsResponse(tags=tags)
+
+
+@router.get("", response_model=VocabListResponse)
+async def list_vocabulary(
+    request: Request,
+    lang: LangCode,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    target: LangCode = "ru",
+    kind: Literal["token", "all"] = "all",
+    status_filter: Annotated[
+        list[Literal["tracked", "known", "ignored"]] | None, Query(alias="status")
+    ] = None,
+    confidence_min: Annotated[int | None, Query(ge=0, le=5)] = None,
+    confidence_max: Annotated[int | None, Query(ge=0, le=5)] = None,
+    tag: Annotated[list[str] | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=128)] = None,
+    added_after: datetime | None = None,
+    sort: Literal["created_at", "text"] = "created_at",
+    sort_dir: Literal["asc", "desc"] = "desc",
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query()] = 25,
+    added_by: Literal["user", "all"] = "user",
+) -> VocabListResponse:
+    if page_size not in (25, 50, 100):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "page_size must be 25, 50 or 100")
+    user_id = _require_user(request)
+    items, total = await service.list_items(
+        session,
+        user_id=user_id,
+        language_code=lang,
+        target_language_code=target,
+        kind=kind,
+        statuses=list(status_filter) if status_filter else ["tracked", "known", "ignored"],
+        confidence_min=confidence_min,
+        confidence_max=confidence_max,
+        tags=list(tag) if tag else [],
+        q=q,
+        added_after=added_after,
+        sort=sort,
+        sort_dir=sort_dir,
+        page=page,
+        page_size=page_size,
+        added_by=added_by,
+    )
+    return VocabListResponse(
+        items=[
+            VocabListItemOut(
+                item_id=i.item_id,
+                kind="token",
+                text=i.text,
+                status=cast('Literal["tracked", "known", "ignored"]', i.status),
+                confidence=i.confidence,
+                primary_translation=(
+                    PrimaryTranslationOut(
+                        text=i.primary_translation_text,
+                        target_language_code=i.primary_translation_target or target,
+                    )
+                    if i.primary_translation_text is not None
+                    else None
+                ),
+                tags=i.tags,
+                pos=i.pos,
+                context=i.context,
+                created_at=cast(datetime, i.created_at),
+            )
+            for i in items
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.post("/bulk", response_model=BulkActionResponse)
+async def bulk(
+    request: Request,
+    body: BulkActionRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BulkActionResponse:
+    user_id = _require_user(request)
+    affected = await service.bulk_action(
+        session,
+        user_id=user_id,
+        item_ids=body.item_ids,
+        action=body.action,
+        tag_name=body.tag_name,
+    )
+    return BulkActionResponse(affected=affected)

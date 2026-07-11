@@ -28,6 +28,43 @@ export interface ItemState {
   confidence: number | null
 }
 
+export interface VocabListItem {
+  item_id: string
+  kind: 'token'
+  text: string
+  status: 'tracked' | 'known' | 'ignored'
+  confidence: number | null
+  primary_translation: { text: string; target_language_code: string } | null
+  tags: string[]
+  pos: string | null
+  context: string | null
+  created_at: string
+}
+
+export interface VocabListResponse {
+  items: VocabListItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface VocabListParams {
+  lang: string
+  target?: string
+  status?: ('tracked' | 'known' | 'ignored')[]
+  confidence_min?: number
+  confidence_max?: number
+  tag?: string[]
+  q?: string
+  added_after?: string
+  sort?: 'created_at' | 'text'
+  sort_dir?: 'asc' | 'desc'
+  page?: number
+  page_size?: number
+  kind?: 'token' | 'all'
+  added_by?: 'user' | 'all'
+}
+
 export const vocabularyApi = {
   lookup: (lang: string, text: string, target: string) => {
     const q = new URLSearchParams({ lang, text, target })
@@ -66,4 +103,29 @@ export const vocabularyApi = {
     api<{ tags: string[] }>(`/api/vocabulary/items/${kind}/${id}/tags/${encodeURIComponent(tag)}`, {
       method: 'DELETE',
     }),
+  list: (p: VocabListParams) => {
+    const qp = new URLSearchParams()
+    qp.set('lang', p.lang)
+    if (p.target) qp.set('target', p.target)
+    for (const s of p.status ?? []) qp.append('status', s)
+    if (p.confidence_min != null) qp.set('confidence_min', String(p.confidence_min))
+    if (p.confidence_max != null) qp.set('confidence_max', String(p.confidence_max))
+    for (const t of p.tag ?? []) qp.append('tag', t)
+    if (p.q) qp.set('q', p.q)
+    if (p.added_after) qp.set('added_after', p.added_after)
+    if (p.sort) qp.set('sort', p.sort)
+    if (p.sort_dir) qp.set('sort_dir', p.sort_dir)
+    if (p.page) qp.set('page', String(p.page))
+    if (p.page_size) qp.set('page_size', String(p.page_size))
+    if (p.kind) qp.set('kind', p.kind)
+    if (p.added_by) qp.set('added_by', p.added_by)
+    return api<VocabListResponse>(`/api/vocabulary?${qp.toString()}`)
+  },
+  bulk: (body: {
+    item_ids: string[]
+    action: 'set_known' | 'set_ignored' | 'delete' | 'add_tag'
+    tag_name?: string
+  }) => api<{ affected: number }>('/api/vocabulary/bulk', {
+    method: 'POST', body: JSON.stringify(body),
+  }),
 }
