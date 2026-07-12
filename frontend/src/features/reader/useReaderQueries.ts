@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { lessonsApi } from '@/api/lessons'
 import { readerApi } from '@/api/reader'
+import { vocabularyApi } from '@/api/vocabulary'
 
 export function useLessonDetail(lessonId: string) {
   return useQuery({
@@ -52,6 +53,14 @@ export function useUndoBulk(lessonId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['reader-statuses', lessonId] })
     },
+  })
+}
+
+export function usePhrases(lang: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['phrases', lang],
+    queryFn: () => vocabularyApi.phrases(lang),
+    enabled,
   })
 }
 

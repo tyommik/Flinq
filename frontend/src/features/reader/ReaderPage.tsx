@@ -1,22 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 
-import { isWord } from '@/api/reader'
+import { isWord, type Sentence } from '@/api/reader'
 import { cn } from '@/lib/utils'
 
 import { BottomToolbar } from './BottomToolbar'
 import { paginate, pageIndexForOrdinal } from './pagination'
 import { PageView } from './PageView'
+import { buildPhraseIndex, buildSelection, type PhraseMatch } from './phraseMatching'
 import { useReaderStore } from './readerStore'
 import { ReaderTopBar } from './ReaderTopBar'
 import { DEFAULT_TRANSLATION_LANG, SentenceView } from './SentenceView'
 import { UndoToast } from './UndoToast'
+import { usePhraseSelection } from './usePhraseSelection'
 import { usePositionSync } from './usePositionSync'
 import { useReaderHotkeys } from './useReaderHotkeys'
 import {
   useBulkKnown,
   useLessonContent,
   useLessonDetail,
+  usePhrases,
   useTokenStatuses,
   useUndoBulk,
 } from './useReaderQueries'
@@ -65,14 +68,6 @@ export function ReaderPage({ lang, lessonId }: Props) {
     () => (content ? content.paragraphs.flatMap((p) => p.sentences) : []),
     [content],
   )
-
-  const selectedSentenceText = useMemo(() => {
-    if (!selectedWord) return null
-    const sentence = flatSentences.find((s) =>
-      s.tokens.some((tok) => isWord(tok) && tok.i === selectedWord.i),
-    )
-    return sentence?.text ?? null
-  }, [selectedWord, flatSentences])
 
   // Reader state (page/sentence position, the armed undo action, any visible
   // toast) is global zustand store state, not scoped to a lesson. Without an
@@ -138,10 +133,55 @@ export function ReaderPage({ lang, lessonId }: Props) {
 
   const readyForInteraction = contentEnabled && !!content
 
+  const contentLang = content?.language_code ?? lang
+  const phrases = usePhrases(contentLang, readyForInteraction)
+  const phraseIndex = useMemo(() => buildPhraseIndex(phrases.data ?? []), [phrases.data])
+
+  function handlePhraseSelect(range: { from: number; to: number }, sentence: Sentence) {
+    const sel = buildSelection(sentence, range.from, range.to)
+    if (!sel) return
+    setSelectedWord({
+      kind: 'phrase', t: sel.displayText, n: sel.text,
+      i: sel.firstOrdinal, sentenceText: sentence.text,
+    })
+  }
+
+  function handlePhraseClick(match: PhraseMatch, sentence: Sentence) {
+    const slice = sentence.tokens.slice(match.startIdx, match.endIdx + 1)
+    const display = slice
+      .map((t) => ('t' in t ? t.t : 'p' in t ? t.p : t.ws))
+      .join('')
+      .trim()
+    const first = slice.find(isWord)
+    setSelectedWord({
+      kind: 'phrase', t: display, n: match.entry.words.join(' '),
+      i: first?.i ?? 0, sentenceText: sentence.text,
+    })
+  }
+
+  const { dragRange, containerProps } = usePhraseSelection({
+    enabled: readyForInteraction,
+    sentences: flatSentences,
+    onSelect: handlePhraseSelect,
+  })
+
+  const selectedSentenceText = useMemo(() => {
+    if (!selectedWord) return null
+    if (selectedWord.sentenceText) return selectedWord.sentenceText
+    const sentence = flatSentences.find((s) =>
+      s.tokens.some((tok) => isWord(tok) && tok.i === selectedWord.i),
+    )
+    return sentence?.text ?? null
+  }, [selectedWord, flatSentences])
+
   const handleWordClick = (w: { t: string; n: string; i: number }) =>
     setSelectedWord({ kind: 'token', ...w, sentenceText: null })
 
   function handleEscape() {
+    // usePhraseSelection has its own window Escape listener that cancels an
+    // active drag; both fire on the same keypress, so without this bail-out
+    // cancelling a drag would also navigate the user out of the reader.
+    if (dragRange) return
     if (selectedWord) {
       setSelectedWord(null)
       return
@@ -330,6 +370,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
         className={cn('py-6', fontClass)}
         onTouchStart={swipeHandlers.onTouchStart}
         onTouchEnd={swipeHandlers.onTouchEnd}
+        {...containerProps}
       >
         {contentLoading && (
           <div
@@ -342,9 +383,10 @@ export function ReaderPage({ lang, lessonId }: Props) {
             <PageView
               page={currentPage}
               statuses={statusMap}
-              phraseIndex={new Map()}
-              dragRange={null}
+              phraseIndex={phraseIndex}
+              dragRange={dragRange}
               onWordClick={handleWordClick}
+              onPhraseClick={handlePhraseClick}
             />
           </div>
         )}
@@ -354,11 +396,12 @@ export function ReaderPage({ lang, lessonId }: Props) {
               lessonId={lessonId}
               sentence={currentSentence}
               statuses={statusMap}
-              phraseIndex={new Map()}
-              dragRange={null}
+              phraseIndex={phraseIndex}
+              dragRange={dragRange}
               lang={content.language_code}
               targetLang={DEFAULT_TRANSLATION_LANG}
               onWordClick={handleWordClick}
+              onPhraseClick={handlePhraseClick}
             />
           </div>
         )}

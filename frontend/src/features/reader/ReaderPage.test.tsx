@@ -1,3 +1,14 @@
+if (typeof window !== 'undefined' && !window.PointerEvent) {
+  class PointerEventPolyfill extends MouseEvent {
+    pointerType: string
+    constructor(type: string, init: MouseEventInit & { pointerType?: string } = {}) {
+      super(type, init)
+      this.pointerType = init.pointerType ?? 'mouse'
+    }
+  }
+  window.PointerEvent = PointerEventPolyfill as unknown as typeof PointerEvent
+}
+
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor, fireEvent } from '@testing-library/react'
@@ -6,8 +17,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LessonDetail } from '@/api/lessons'
 import type { LessonContent } from '@/api/reader'
 
+const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }))
+
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => navigateMock,
   Link: ({ children, className }: { children?: ReactNode; className?: string }) => (
     <a className={className}>{children}</a>
   ),
@@ -36,6 +49,7 @@ vi.mock('@/api/vocabulary', () => ({
     lookup: vi.fn(), createItem: vi.fn(), patchItem: vi.fn(),
     addTranslation: vi.fn(), updateTranslation: vi.fn(), deleteTranslation: vi.fn(),
     putNote: vi.fn(), addTag: vi.fn(), removeTag: vi.fn(),
+    phrases: vi.fn(),
   },
 }))
 vi.mock('@/api/dictionary', () => ({ dictionaryApi: { lookup: vi.fn() } }))
@@ -109,6 +123,7 @@ function renderPage(lessonId = 'lesson-1', queryClient = new QueryClient({ defau
 describe('ReaderPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(vocabularyApi.phrases).mockResolvedValue([])
     useReaderStore.setState({
       mode: 'page',
       pageIndex: 0,
@@ -278,5 +293,59 @@ describe('ReaderPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Hello' }))
     expect(await screen.findByTestId('word-card')).toBeInTheDocument()
     expect(await screen.findByPlaceholderText('Введите новый перевод здесь')).toBeInTheDocument()
+  })
+
+  it('renders saved phrase underlay and opens phrase card on click', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue(baseLesson)
+    vi.mocked(readerApi.content).mockResolvedValue(content)
+    vi.mocked(readerApi.statuses).mockResolvedValue({})
+    vi.mocked(vocabularyApi.phrases).mockResolvedValue([
+      { item_id: 'ph1', phrase_text: 'hello world', status: 'tracked', confidence: 1 },
+    ])
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: 'ph1', status: 'tracked', confidence: 1,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+
+    renderPage()
+
+    const phrase = await screen.findByTestId('phrase-span')
+    fireEvent.click(phrase)
+    expect(await screen.findByTestId('word-card')).toBeInTheDocument()
+  })
+
+  it('Escape during an active phrase drag cancels the drag instead of navigating to the library', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue(baseLesson)
+    vi.mocked(readerApi.content).mockResolvedValue(content)
+    vi.mocked(readerApi.statuses).mockResolvedValue({})
+
+    renderPage()
+
+    await screen.findByTestId('page-view-slot')
+
+    const helloWord = screen.getByRole('button', { name: 'Hello' })
+    const worldWord = screen.getByRole('button', { name: 'world' })
+
+    fireEvent(
+      helloWord,
+      new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, buttons: 1 }),
+    )
+    fireEvent(
+      worldWord,
+      new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse', button: 0, buttons: 1 }),
+    )
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    // The drag was cancelled (not finalized into a phrase selection), and the
+    // reader did NOT navigate away to the library — only the drag was cancelled.
+    expect(navigateMock).not.toHaveBeenCalled()
+    expect(screen.getByTestId('page-view-slot')).toBeInTheDocument()
+
+    fireEvent(
+      worldWord,
+      new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, buttons: 0 }),
+    )
+    expect(screen.queryByTestId('word-card')).not.toBeInTheDocument()
   })
 })

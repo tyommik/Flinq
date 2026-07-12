@@ -31,8 +31,18 @@ vi.mock('@/api/reader', () => ({
   },
 }))
 
+vi.mock('@/api/vocabulary', () => ({
+  vocabularyApi: {
+    lookup: vi.fn(), createItem: vi.fn(), patchItem: vi.fn(),
+    addTranslation: vi.fn(), updateTranslation: vi.fn(), deleteTranslation: vi.fn(),
+    putNote: vi.fn(), addTag: vi.fn(), removeTag: vi.fn(),
+    phrases: vi.fn(),
+  },
+}))
+
 import { lessonsApi } from '@/api/lessons'
 import { readerApi } from '@/api/reader'
+import { vocabularyApi } from '@/api/vocabulary'
 
 import { useReaderStore } from './readerStore'
 import { ReaderPage } from './ReaderPage'
@@ -120,6 +130,7 @@ describe('bulk-known flow, undo, hotkeys', () => {
     vi.mocked(readerApi.content).mockResolvedValue(content)
     vi.mocked(readerApi.statuses).mockResolvedValue({})
     vi.mocked(readerApi.putPosition).mockResolvedValue(undefined)
+    vi.mocked(vocabularyApi.phrases).mockResolvedValue([])
   })
 
   it('advances the page via bulk-known with the exact ordinal range, then undoes via the toast', async () => {
