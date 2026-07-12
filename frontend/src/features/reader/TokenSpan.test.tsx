@@ -35,15 +35,15 @@ describe('TokenSpan', () => {
     expect(el.className).not.toContain('bg-[var(--reader-tracked-bg)]')
   })
 
-  it('renders a tracked word with confidence 0 as new (blue), not yellow', () => {
+  it('renders a tracked word with confidence 0 as tracked (yellow) — ADR-0005: uniform yellow regardless of confidence', () => {
     render(<TokenSpan token={{ t: 'Hola', n: 'hola', i: 3 }} status={{ s: 'tracked', c: 0 }} />)
     const el = screen.getByText('Hola')
-    expect(el.className).toContain('bg-[var(--reader-new-bg)]')
-    expect(el.className).not.toContain('bg-[var(--reader-tracked-bg)]')
+    expect(el.className).toContain('bg-[var(--reader-tracked-bg)]')
+    expect(el.className).not.toContain('bg-[var(--reader-new-bg)]')
   })
 
-  it('renders a tracked word with confidence >= 1 as tracked (yellow)', () => {
-    render(<TokenSpan token={{ t: 'Hola', n: 'hola', i: 3 }} status={{ s: 'tracked', c: 2 }} />)
+  it('renders a tracked word with a missing confidence as tracked (yellow)', () => {
+    render(<TokenSpan token={{ t: 'Hola', n: 'hola', i: 3 }} status={{ s: 'tracked' }} />)
     expect(screen.getByText('Hola').className).toContain('bg-[var(--reader-tracked-bg)]')
   })
 

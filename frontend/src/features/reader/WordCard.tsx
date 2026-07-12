@@ -130,7 +130,8 @@ export function WordCard({ word, lang, target, lessonId, onClose, onStatusApplie
   }
 
   async function withItem(fn: (id: string) => Promise<unknown>): Promise<void> {
-    const id = itemId ?? (await ensureItem('tracked', 0))
+    // ADR-0005: new → tracked стартует с confidence 1.
+    const id = itemId ?? (await ensureItem('tracked', 1))
     await fn(id)
   }
 

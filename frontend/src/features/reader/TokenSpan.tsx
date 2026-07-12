@@ -20,7 +20,8 @@ export const TokenSpan = memo(function TokenSpan({
   if ('ws' in token) return <span>{token.ws}</span>
   if ('p' in token) return <span>{token.p}</span>
   const s = status?.s
-  const active = s === 'tracked' && (status?.c ?? 0) >= 1
+  // ADR-0005: tracked — жёлтый фон независимо от confidence (в MVP без градации).
+  const active = s === 'tracked'
   // Внутри фразы фон слова не рисуем — фон даёт PhraseSpan; статусная
   // подсветка слова вернётся, как только фраза перестанет матчиться.
   const highlight = insidePhrase

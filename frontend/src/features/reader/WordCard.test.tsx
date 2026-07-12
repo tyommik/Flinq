@@ -48,12 +48,12 @@ describe('WordCard core', () => {
     useReaderStore.setState({ wordCardExpanded: false })
   })
 
-  it('creates a tracked/0 item when a translation is typed on a new word', async () => {
+  it('creates a tracked/1 item when a translation is typed on a new word', async () => {
     vi.mocked(vocabularyApi.lookup).mockResolvedValue({
       item_id: null, status: 'new', confidence: null,
       translations: { primary: null, all: [] }, note: null, tags: [],
     })
-    vi.mocked(vocabularyApi.createItem).mockResolvedValue({ item_id: 'I1', status: 'tracked', confidence: 0 })
+    vi.mocked(vocabularyApi.createItem).mockResolvedValue({ item_id: 'I1', status: 'tracked', confidence: 1 })
     vi.mocked(vocabularyApi.addTranslation).mockResolvedValue({ id: 'T1', text: 'каждый', target_language_code: 'ru', is_primary: true, source_type: 'user' })
 
     renderCard()
@@ -63,7 +63,7 @@ describe('WordCard core', () => {
 
     await waitFor(() => {
       expect(vocabularyApi.createItem).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'tracked', confidence: 0, text: 'cada' }),
+        expect.objectContaining({ status: 'tracked', confidence: 1, text: 'cada' }),
       )
     })
     await waitFor(() => {
@@ -202,7 +202,7 @@ describe('WordCard core', () => {
     })
     vi.mocked(vocabularyApi.createItem)
       .mockRejectedValueOnce(new Error('network down'))
-      .mockResolvedValueOnce({ item_id: 'I1', status: 'tracked', confidence: 0 })
+      .mockResolvedValueOnce({ item_id: 'I1', status: 'tracked', confidence: 1 })
     vi.mocked(vocabularyApi.addTranslation).mockResolvedValue({ id: 'T1', text: 'каждый', target_language_code: 'ru', is_primary: true, source_type: 'user' })
 
     renderCard()
@@ -232,12 +232,12 @@ describe('WordCard core', () => {
     })
   })
 
-  it('creates a tracked/0 item when a note is typed on a new word', async () => {
+  it('creates a tracked/1 item when a note is typed on a new word', async () => {
     vi.mocked(vocabularyApi.lookup).mockResolvedValue({
       item_id: null, status: 'new', confidence: null,
       translations: { primary: null, all: [] }, note: null, tags: [],
     })
-    vi.mocked(vocabularyApi.createItem).mockResolvedValue({ item_id: 'I1', status: 'tracked', confidence: 0 })
+    vi.mocked(vocabularyApi.createItem).mockResolvedValue({ item_id: 'I1', status: 'tracked', confidence: 1 })
     vi.mocked(vocabularyApi.putNote).mockResolvedValue({ note: 'моя заметка' })
 
     renderCard()
@@ -251,7 +251,7 @@ describe('WordCard core', () => {
 
     await waitFor(() => {
       expect(vocabularyApi.createItem).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'tracked', confidence: 0, text: 'cada' }),
+        expect.objectContaining({ status: 'tracked', confidence: 1, text: 'cada' }),
       )
     })
     await waitFor(() => {
@@ -349,7 +349,7 @@ describe('WordCard core', () => {
       item_id: null, status: 'new', confidence: null,
       translations: { primary: null, all: [] }, note: null, tags: [],
     })
-    vi.mocked(vocabularyApi.createItem).mockResolvedValue({ item_id: 'I1', status: 'tracked', confidence: 0 })
+    vi.mocked(vocabularyApi.createItem).mockResolvedValue({ item_id: 'I1', status: 'tracked', confidence: 1 })
 
     render(
       <WordCard
