@@ -14,10 +14,12 @@ export const MAX_PHRASE_WORDS = 8
 interface Anchor {
   ordinal: number
   sentence: Sentence
-  /** Первый/последний слово-ординал предложения якоря (ординалы слов
-      внутри предложения — непрерывный диапазон). */
-  first: number
-  last: number
+  /** Ординалы слов предложения якоря по возрастанию. Пунктуация тоже
+      получает свой ординал у бэкенда, поэтому эта последовательность
+      содержит "дыры" и не является непрерывным диапазоном. Непустой по
+      построению — якорь ставится только если в предложении нашлось слово
+      с этим ординалом (см. onPointerDown). */
+  wordOrdinals: number[]
 }
 
 interface Params {
@@ -26,16 +28,48 @@ interface Params {
   onSelect: (range: DragRange, sentence: Sentence) => void
 }
 
+// Находит индекс слова с данным ординалом. Если такого слова в предложении
+// нет (при текущей разметке DOM это не должно происходить — пунктуация не
+// несёт data-ordinal, поэтому под курсором никогда не окажется её ординал),
+// подбираем ближайшее слово по направлению движения курсора.
+function resolveWordIndex(wordOrdinals: number[], target: number, forward: boolean): number {
+  const exact = wordOrdinals.indexOf(target)
+  if (exact !== -1) return exact
+  if (forward) {
+    // последний индекс с wordOrdinals[i] <= target
+    let idx = 0
+    for (const [i, ord] of wordOrdinals.entries()) {
+      if (ord <= target) idx = i
+    }
+    return idx
+  }
+  // первый индекс с wordOrdinals[i] >= target
+  for (const [i, ord] of wordOrdinals.entries()) {
+    if (ord >= target) return i
+  }
+  return wordOrdinals.length - 1
+}
+
+// Лимит в 8 слов считается в индексном пространстве wordOrdinals, а не
+// арифметикой над ординалами — иначе пунктуация внутри диапазона (у которой
+// тоже есть свой ординал) отъедала бы слот у настоящего слова.
 function clampRange(anchor: Anchor, target: number): DragRange {
-  const clamped = Math.min(Math.max(target, anchor.first), anchor.last)
+  const { wordOrdinals, ordinal } = anchor
+  const first = Math.min(...wordOrdinals)
+  const last = Math.max(...wordOrdinals)
+  const clamped = Math.min(Math.max(target, first), last)
+
+  const ai = wordOrdinals.indexOf(ordinal)
+  const ti = resolveWordIndex(wordOrdinals, clamped, clamped >= ordinal)
+
   const span = MAX_PHRASE_WORDS - 1
-  const limited =
-    clamped > anchor.ordinal
-      ? Math.min(clamped, anchor.ordinal + span)
-      : Math.max(clamped, anchor.ordinal - span)
+  const li = ti > ai ? Math.min(ti, ai + span) : Math.max(ti, ai - span)
+
+  const fromIdx = Math.min(ai, li)
+  const toIdx = Math.max(ai, li)
   return {
-    from: Math.min(anchor.ordinal, limited),
-    to: Math.max(anchor.ordinal, limited),
+    from: wordOrdinals[fromIdx] ?? ordinal,
+    to: wordOrdinals[toIdx] ?? ordinal,
   }
 }
 
@@ -113,15 +147,11 @@ export function usePhraseSelection({ enabled, sentences, onSelect }: Params) {
       s.tokens.some((tok) => isWord(tok) && tok.i === ordinal),
     )
     if (!sentence) return
-    const words = sentence.tokens.filter(isWord)
-    const first = words[0]
-    const last = words[words.length - 1]
-    if (!first || !last) return
+    const wordOrdinals = sentence.tokens.filter(isWord).map((word) => word.i)
     anchorRef.current = {
       ordinal,
       sentence,
-      first: first.i,
-      last: last.i,
+      wordOrdinals,
     }
   }
 

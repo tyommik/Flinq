@@ -34,24 +34,44 @@ function sentence(seg: string, words: string[], firstOrdinal: number): Sentence 
 const s1 = sentence('s1', ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'], 0)
 const s2 = sentence('s2', ['other', 'words'], 10)
 
+// Предложение с "дырами" в ординалах слов — имитирует пунктуацию, которая
+// тоже получает свой ординал у бэкенда (0,1,3,4,6,7,9,10,12,13 — 10 слов,
+// ординалы 2,5,8,11 "заняты" пунктуацией и в это предложение не включены).
+const gapWordOrdinals = [0, 1, 3, 4, 6, 7, 9, 10, 12, 13]
+const gappedWords = ['so', 'far', 'so', 'good', 'it', 'seems', 'to', 'me', 'right', 'now']
+function gappedSentence(): Sentence {
+  const tokens: Token[] = []
+  gapWordOrdinals.forEach((ordinal, k) => {
+    if (k > 0) tokens.push(ws)
+    tokens.push(w(gappedWords[k] ?? '', ordinal))
+  })
+  return {
+    seg_id: 'sg', index: 0, text: gappedWords.join(' '),
+    normalized_text: gappedWords.join(' ').toLowerCase(), tokens,
+  }
+}
+const sg = gappedSentence()
+
 function Harness({
   onSelect,
   enabled = true,
   onWordClick,
+  sentences = [s1, s2],
 }: {
   onSelect: (r: DragRange, s: Sentence) => void
   enabled?: boolean
   onWordClick?: (ordinal: number) => void
+  sentences?: Sentence[]
 }) {
   const { dragRange, containerProps } = usePhraseSelection({
     enabled,
-    sentences: [s1, s2],
+    sentences,
     onSelect,
   })
   return (
     <div data-testid="container" {...containerProps}>
       <span data-testid="drag-range">{dragRange ? `${dragRange.from}-${dragRange.to}` : ''}</span>
-      {[s1, s2].flatMap((s) =>
+      {sentences.flatMap((s) =>
         s.tokens.map((tok, i) =>
           't' in tok ? (
             <span
@@ -214,5 +234,24 @@ describe('usePhraseSelection', () => {
 
     fireEvent.click(screen.getByTestId('w-1'))
     expect(onWordClick).toHaveBeenCalledTimes(1)
+  })
+
+  it(`clamps to ${MAX_PHRASE_WORDS} words, not ${MAX_PHRASE_WORDS} ordinals, across gapped punctuation ordinals`, () => {
+    const onSelect = vi.fn()
+    render(<Harness onSelect={onSelect} sentences={[sg]} />)
+    pointer('pointerdown', screen.getByTestId('w-0'))
+    pointer('pointerover', screen.getByTestId('w-13')) // 10 слов предложения, с "дырами" на месте пунктуации
+    pointer('pointerup', screen.getByTestId('w-13'))
+    // 8 слов от ординала 0 — это ординалы [0,1,3,4,6,7,9,10], последнее слово — 10.
+    expect(onSelect).toHaveBeenCalledWith({ from: 0, to: 10 }, sg)
+  })
+
+  it('drag between two mid-words of a gapped sentence resolves exact word ordinals', () => {
+    const onSelect = vi.fn()
+    render(<Harness onSelect={onSelect} sentences={[sg]} />)
+    pointer('pointerdown', screen.getByTestId('w-4'))
+    pointer('pointerover', screen.getByTestId('w-9'))
+    pointer('pointerup', screen.getByTestId('w-9'))
+    expect(onSelect).toHaveBeenCalledWith({ from: 4, to: 9 }, sg)
   })
 })
