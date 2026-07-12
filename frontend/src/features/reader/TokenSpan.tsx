@@ -12,17 +12,17 @@ export const TokenSpan = memo(function TokenSpan({ token, status, onWordClick }:
   if ('p' in token) return <span>{token.p}</span>
   const s = status?.s
   const active = s === 'tracked' && (status?.c ?? 0) >= 1
-  const bg = active
-    ? 'bg-[var(--reader-tracked-bg)]'
+  const highlight = active
+    ? 'rounded bg-[var(--reader-tracked-bg)] px-1 -mx-1'
     : s === 'known' || s === 'ignored'
       ? ''
-      : 'bg-[var(--reader-new-bg)]'
+      : 'rounded bg-[var(--reader-new-bg)] px-1 -mx-1'
   return (
     <span
       data-ordinal={token.i}
       role="button"
       tabIndex={-1}
-      className={`cursor-pointer rounded-sm px-px hover:brightness-95 ${bg}`}
+      className={`cursor-pointer hover:brightness-95 ${highlight}`}
       onClick={() => onWordClick?.(token)}
     >
       {token.t}

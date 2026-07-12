@@ -165,6 +165,10 @@ describe('ReaderPage', () => {
     })
     vi.mocked(readerApi.content).mockResolvedValue(content)
     vi.mocked(readerApi.statuses).mockResolvedValue({})
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
 
     renderPage()
 
@@ -180,11 +184,41 @@ describe('ReaderPage', () => {
     })
     vi.mocked(readerApi.content).mockResolvedValue(content)
     vi.mocked(readerApi.statuses).mockResolvedValue({})
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
 
     renderPage()
 
     const slot = await screen.findByTestId('sentence-view-slot')
     await waitFor(() => expect(slot).toHaveTextContent('Hello world.'))
+  })
+
+  it('navigates sentences with the fixed edge arrows in sentence mode', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue({
+      ...baseLesson,
+      reader_position: { view_mode: 'sentence', current_segment_id: 'seg-1', current_token_ordinal: 0 },
+    })
+    vi.mocked(readerApi.content).mockResolvedValue(content)
+    vi.mocked(readerApi.statuses).mockResolvedValue({})
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+
+    renderPage()
+
+    const slot = await screen.findByTestId('sentence-view-slot')
+    await waitFor(() => expect(slot).toHaveTextContent('Hello world.'))
+
+    const prev = screen.getByRole('button', { name: 'Предыдущее предложение' })
+    const next = screen.getByRole('button', { name: 'Следующее предложение' })
+    expect(prev).toBeDisabled()
+
+    fireEvent.click(next)
+    await waitFor(() => expect(slot).toHaveTextContent('Goodbye now.'))
+    expect(screen.getByRole('button', { name: 'Следующее предложение' })).toBeDisabled()
   })
 
   it('shows an error state and does not spin forever when the lesson fetch fails', async () => {

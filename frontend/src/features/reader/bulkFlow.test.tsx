@@ -129,7 +129,7 @@ describe('bulk-known flow, undo, hotkeys', () => {
     renderPage()
 
     await screen.findByTestId('page-view-slot')
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следующая страница' }))
 
     await waitFor(() =>
       expect(firstCallArg(vi.mocked(readerApi.bulkKnown))).toEqual({
@@ -157,7 +157,7 @@ describe('bulk-known flow, undo, hotkeys', () => {
     renderPage()
 
     await screen.findByTestId('page-view-slot')
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следующая страница' }))
 
     await waitFor(() =>
       expect(firstCallArg(vi.mocked(readerApi.bulkKnown))).toEqual({
@@ -192,7 +192,7 @@ describe('bulk-known flow, undo, hotkeys', () => {
     renderPage()
 
     await screen.findByTestId('page-view-slot')
-    fireEvent.click(screen.getByRole('button', { name: 'Далее' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следующая страница' }))
 
     await screen.findByTestId('undo-toast')
 

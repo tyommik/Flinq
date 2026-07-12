@@ -18,6 +18,12 @@ vi.mock('@/api/reader', async () => {
 
 import { readerApi } from '@/api/reader'
 
+vi.mock('@/api/vocabulary', () => ({
+  vocabularyApi: { lookup: vi.fn() },
+}))
+
+import { vocabularyApi } from '@/api/vocabulary'
+
 import { DEFAULT_TRANSLATION_LANG, SentenceView } from './SentenceView'
 
 const sentence: Sentence = {
@@ -44,30 +50,33 @@ const statuses: StatusMap = {
 function renderView(overrides: Partial<ComponentProps<typeof SentenceView>> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onWordClick = vi.fn()
-  const onPrev = vi.fn()
-  const onNext = vi.fn()
   render(
     <QueryClientProvider client={queryClient}>
       <SentenceView
         lessonId="lesson-1"
         sentence={sentence}
         statuses={statuses}
+        lang="en"
         targetLang={DEFAULT_TRANSLATION_LANG}
         onWordClick={onWordClick}
-        onPrev={onPrev}
-        onNext={onNext}
-        canPrev={true}
-        canNext={true}
         {...overrides}
       />
     </QueryClientProvider>,
   )
-  return { onWordClick, onPrev, onNext }
+  return { onWordClick }
 }
 
 describe('SentenceView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null,
+      status: 'new',
+      confidence: null,
+      translations: { primary: null, all: [] },
+      note: null,
+      tags: [],
+    })
   })
 
   it('does not fetch the translation before expand', () => {
@@ -166,22 +175,28 @@ describe('SentenceView', () => {
     expect(screen.queryByText('AI')).not.toBeInTheDocument()
   })
 
-  it('lists tracked words in the vocab mini-list with their confidence, excluding non-tracked words', () => {
+  it('lists tracked and new words in the vocab list, excluding known words', () => {
     renderView()
 
     const vocab = screen.getByTestId('sentence-vocab')
     expect(within(vocab).getByText('Hello')).toBeInTheDocument()
     expect(within(vocab).getByText('2')).toBeInTheDocument()
+    expect(within(vocab).getByText('world')).toBeInTheDocument()
+    expect(within(vocab).getByText('•')).toBeInTheDocument()
     expect(within(vocab).queryByText('brave')).not.toBeInTheDocument()
-    expect(within(vocab).queryByText('world')).not.toBeInTheDocument()
   })
 
-  it('omits the vocab mini-list entirely when the sentence has no tracked words', () => {
-    renderView({ statuses: { brave: { s: 'known' } } })
+  it('omits the vocab list entirely when the sentence has only known words', () => {
+    renderView({
+      sentence: {
+        ...sentence,
+        tokens: [{ t: 'brave', n: 'brave', i: 1 }, { p: '.' }],
+      },
+    })
     expect(screen.queryByTestId('sentence-vocab')).not.toBeInTheDocument()
   })
 
-  it('calls onWordClick with the token when a vocab mini-card is clicked', () => {
+  it('calls onWordClick with the token when a vocab row is clicked', () => {
     const { onWordClick } = renderView()
 
     const vocab = screen.getByTestId('sentence-vocab')
@@ -190,10 +205,9 @@ describe('SentenceView', () => {
     expect(onWordClick).toHaveBeenCalledWith({ t: 'Hello', n: 'hello', i: 0 })
   })
 
-  it('disables the prev/next buttons per canPrev/canNext', () => {
-    renderView({ canPrev: false, canNext: false })
+  it('renders the disabled play-audio stub', () => {
+    renderView()
 
-    expect(screen.getByRole('button', { name: '‹' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '›' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Воспроизвести аудио' })).toBeDisabled()
   })
 })

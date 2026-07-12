@@ -49,8 +49,12 @@
   --reader-tracked-foreground: oklch(0.141 0.005 285.823);
 
   /* Reader token highlight backgrounds (FLQ-4.9) */
-  --reader-new-bg: #e0f2fe;
-  --reader-tracked-bg: #fef08a;
+  --reader-new-bg: #c6dfff;
+  --reader-tracked-bg: #ffeba8;
+
+  /* Reader sentence-vocab status circles */
+  --reader-status-tracked-bg: #ffdb8c;
+  --reader-status-foreground: #523812;
 
   /* Confidence scale 0..5 — yellow gradient */
   --confidence-0: oklch(0.97 0.025 95);

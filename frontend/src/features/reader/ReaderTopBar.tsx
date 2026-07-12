@@ -13,7 +13,6 @@ import { useReaderStore, type ViewMode } from './readerStore'
 
 interface Props {
   lang: string
-  title: string
   progressPercent: number
   mode: ViewMode
   sidebarOpen: boolean
@@ -34,7 +33,6 @@ const LINE_HEIGHT_OPTIONS = [
 
 export function ReaderTopBar({
   lang,
-  title,
   progressPercent,
   mode,
   sidebarOpen,
@@ -45,7 +43,7 @@ export function ReaderTopBar({
   const setFont = useReaderStore((s) => s.setFont)
 
   return (
-    <div className="flex items-center gap-4 border-b border-border py-3">
+    <div className="flex h-14 items-center gap-4 border-b border-border">
       <button
         type="button"
         aria-label="Закрыть"
@@ -57,14 +55,15 @@ export function ReaderTopBar({
         <X className="h-5 w-5" />
       </button>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{title}</p>
-        <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
-          <div
-            className="h-1.5 rounded-full bg-primary"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
+      <div className="relative mx-auto h-1 w-full max-w-[700px] flex-1 rounded-full bg-muted">
+        <div
+          className="h-1 rounded-full bg-primary"
+          style={{ width: `${progressPercent}%` }}
+        />
+        <div
+          className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"
+          style={{ left: `${progressPercent}%` }}
+        />
       </div>
 
       <DropdownMenu>

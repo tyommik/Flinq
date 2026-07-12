@@ -9,13 +9,9 @@ interface Props {
   page: PageSlice
   statuses: StatusMap
   onWordClick?: (word: { t: string; n: string; i: number }) => void
-  onPrev: () => void
-  onNext: () => void
-  canPrev: boolean
-  canNext: boolean
 }
 
-export function PageView({ page, statuses, onWordClick, onPrev, onNext, canPrev, canNext }: Props) {
+export function PageView({ page, statuses, onWordClick }: Props) {
   const paragraphOrder: number[] = []
   const paragraphs = new Map<number, PageSlice['sentences']>()
   for (const entry of page.sentences) {
@@ -46,25 +42,6 @@ export function PageView({ page, statuses, onWordClick, onPrev, onNext, canPrev,
             ))}
           </p>
         ))}
-      </div>
-
-      <div className="flex items-center justify-between py-6">
-        <button
-          type="button"
-          onClick={onPrev}
-          disabled={!canPrev}
-          className="rounded-md px-3 py-1.5 text-sm font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-        >
-          Назад
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={!canNext}
-          className="rounded-md px-3 py-1.5 text-sm font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-        >
-          Далее
-        </button>
       </div>
     </div>
   )

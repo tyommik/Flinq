@@ -319,10 +319,9 @@ export function ReaderPage({ lang, lessonId }: Props) {
   )
 
   return (
-    <div className="mx-auto max-w-screen-2xl px-6">
+    <div className="mx-auto max-w-screen-2xl px-6 pb-24">
       <ReaderTopBar
         lang={lang}
-        title={lessonDetail.title}
         progressPercent={progressPercent}
         mode={mode}
         sidebarOpen={sidebarOpen}
@@ -342,15 +341,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
         )}
         {!contentLoading && content && mode === 'page' && currentPage && (
           <div data-testid="page-view-slot">
-            <PageView
-              page={currentPage}
-              statuses={statusMap}
-              onWordClick={setSelectedWord}
-              onPrev={handlePrevPage}
-              onNext={handleNextPage}
-              canPrev={canPrev}
-              canNext={canNext}
-            />
+            <PageView page={currentPage} statuses={statusMap} onWordClick={setSelectedWord} />
           </div>
         )}
         {!contentLoading && content && mode === 'sentence' && currentSentence && (
@@ -359,16 +350,36 @@ export function ReaderPage({ lang, lessonId }: Props) {
               lessonId={lessonId}
               sentence={currentSentence}
               statuses={statusMap}
+              lang={content.language_code}
               targetLang={DEFAULT_TRANSLATION_LANG}
               onWordClick={setSelectedWord}
-              onPrev={handlePrevSentence}
-              onNext={handleNextSentence}
-              canPrev={canPrevSentence}
-              canNext={canNextSentence}
             />
           </div>
         )}
       </div>
+
+      {!contentLoading && content && (
+        <>
+          <button
+            type="button"
+            aria-label={mode === 'sentence' ? 'Предыдущее предложение' : 'Предыдущая страница'}
+            onClick={handlePrev}
+            disabled={mode === 'sentence' ? !canPrevSentence : !canPrev}
+            className="fixed left-2 top-1/2 z-10 -translate-y-1/2 rounded-md px-2 py-1 text-3xl text-muted-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-30"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            aria-label={mode === 'sentence' ? 'Следующее предложение' : 'Следующая страница'}
+            onClick={handleNext}
+            disabled={mode === 'sentence' ? !canNextSentence : !canNext}
+            className="fixed right-2 top-1/2 z-10 -translate-y-1/2 rounded-md px-2 py-1 text-3xl text-muted-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-30"
+          >
+            ›
+          </button>
+        </>
+      )}
 
       <BottomToolbar mode={mode} onToggleMode={() => setMode(mode === 'page' ? 'sentence' : 'page')} />
 
