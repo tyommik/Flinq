@@ -772,58 +772,66 @@ async def bulk_action(
     action: str,
     tag_name: str | None,
 ) -> int:
-    """Bulk operation over the caller's token items (spec §3.2).
+    """Bulk operation over the caller's token AND phrase items (spec §3.2).
 
     Unknown/foreign ids are silently skipped. One transaction.
     """
-    owned = (
-        (
-            await session.execute(
-                select(TokenItem.id).where(TokenItem.user_id == user_id, TokenItem.id.in_(item_ids))
+    owned_by_kind: dict[str, list[uuid.UUID]] = {}
+    for kind, model in _MODEL_BY_KIND.items():
+        ids = (
+            (
+                await session.execute(
+                    select(model.id).where(model.user_id == user_id, model.id.in_(item_ids))
+                )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
-    if not owned:
+        if ids:
+            owned_by_kind[kind] = list(ids)
+    if not owned_by_kind:
         return 0
 
     if action in ("set_known", "set_ignored"):
-        status = "known" if action == "set_known" else "ignored"
-        await session.execute(
-            update(TokenItem)
-            .where(TokenItem.id.in_(owned))
-            .values(status=status, confidence=None, added_by="user")
-        )
-    elif action == "delete":
-        for model in (PersonalTranslation, PersonalNote, ItemTag):
+        new_status = "known" if action == "set_known" else "ignored"
+        for kind, ids in owned_by_kind.items():
+            model = _MODEL_BY_KIND[kind]
             await session.execute(
-                delete(model).where(
-                    model.owner_user_id == user_id,
-                    model.item_kind == "token",
-                    model.item_id.in_(owned),
-                )
+                update(model)
+                .where(model.id.in_(ids))
+                .values(status=new_status, confidence=None, added_by="user")
             )
-        await session.execute(delete(TokenItem).where(TokenItem.id.in_(owned)))
+    elif action == "delete":
+        for kind, ids in owned_by_kind.items():
+            for satellite in (PersonalTranslation, PersonalNote, ItemTag):
+                await session.execute(
+                    delete(satellite).where(
+                        satellite.owner_user_id == user_id,
+                        satellite.item_kind == kind,
+                        satellite.item_id.in_(ids),
+                    )
+                )
+            model = _MODEL_BY_KIND[kind]
+            await session.execute(delete(model).where(model.id.in_(ids)))
     elif action == "add_tag":
         assert tag_name is not None  # validated at the API layer
-        await session.execute(
-            update(TokenItem).where(TokenItem.id.in_(owned)).values(added_by="user")
-        )
-        for item_id in owned:
-            await session.execute(
-                pg_insert(ItemTag)
-                .values(
-                    id=uuid.uuid4(),
-                    owner_user_id=user_id,
-                    item_kind="token",
-                    item_id=item_id,
-                    tag_name=tag_name,
+        for kind, ids in owned_by_kind.items():
+            model = _MODEL_BY_KIND[kind]
+            await session.execute(update(model).where(model.id.in_(ids)).values(added_by="user"))
+            for item_id in ids:
+                await session.execute(
+                    pg_insert(ItemTag)
+                    .values(
+                        id=uuid.uuid4(),
+                        owner_user_id=user_id,
+                        item_kind=kind,
+                        item_id=item_id,
+                        tag_name=tag_name,
+                    )
+                    .on_conflict_do_nothing(constraint="uq_item_tags")
                 )
-                .on_conflict_do_nothing(constraint="uq_item_tags")
-            )
     await session.commit()
-    return len(owned)
+    return sum(len(ids) for ids in owned_by_kind.values())
 
 
 async def list_phrases(
