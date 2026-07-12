@@ -12,7 +12,7 @@ import { useReaderStore } from './readerStore'
 import { ReaderTopBar } from './ReaderTopBar'
 import { DEFAULT_TRANSLATION_LANG, SentenceView } from './SentenceView'
 import { UndoToast } from './UndoToast'
-import { usePhraseSelection } from './usePhraseSelection'
+import { usePhraseSelection, type DragRange } from './usePhraseSelection'
 import { usePositionSync } from './usePositionSync'
 import { useReaderHotkeys } from './useReaderHotkeys'
 import {
@@ -45,6 +45,10 @@ export function ReaderPage({ lang, lessonId }: Props) {
   const { data: statuses } = useTokenStatuses(lessonId, contentEnabled)
 
   const [selectedWord, setSelectedWord] = useState<SelectedItem | null>(null)
+  // Вхождение, из которого открыта карточка: держит подсветку выделения,
+  // пока карточка открыта; гаснет при закрытии или при выборе статуса
+  // (дальше слово помечает статусный цвет).
+  const [selectionRange, setSelectionRange] = useState<DragRange | null>(null)
   const [toastCount, setToastCount] = useState<number | null>(null)
   const [bulkErrorVisible, setBulkErrorVisible] = useState(false)
 
@@ -83,6 +87,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
     setToastCount(null)
     setBulkErrorVisible(false)
     setSelectedWord(null)
+    setSelectionRange(null)
   }, [lessonId, setPageIndex, setSentenceFlatIndex, setLastBulkActionId])
 
   // Tracks which lesson's position has already been restored, so re-renders
@@ -144,6 +149,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
       kind: 'phrase', t: sel.displayText, n: sel.text,
       i: sel.firstOrdinal, sentenceText: sentence.text,
     })
+    setSelectionRange(range)
   }
 
   function handlePhraseClick(match: PhraseMatch, sentence: Sentence) {
@@ -152,11 +158,14 @@ export function ReaderPage({ lang, lessonId }: Props) {
       .map((t) => ('t' in t ? t.t : 'p' in t ? t.p : t.ws))
       .join('')
       .trim()
-    const first = slice.find(isWord)
+    const words = slice.filter(isWord)
+    const first = words[0]
+    const last = words[words.length - 1]
     setSelectedWord({
       kind: 'phrase', t: display, n: match.entry.words.join(' '),
       i: first?.i ?? 0, sentenceText: sentence.text,
     })
+    setSelectionRange(first && last ? { from: first.i, to: last.i } : null)
   }
 
   const { dragRange, containerProps } = usePhraseSelection({
@@ -174,8 +183,15 @@ export function ReaderPage({ lang, lessonId }: Props) {
     return sentence?.text ?? null
   }, [selectedWord, flatSentences])
 
-  const handleWordClick = (w: { t: string; n: string; i: number }) =>
+  const handleWordClick = (w: { t: string; n: string; i: number }) => {
     setSelectedWord({ kind: 'token', ...w, sentenceText: null })
+    setSelectionRange({ from: w.i, to: w.i })
+  }
+
+  function closeCard() {
+    setSelectedWord(null)
+    setSelectionRange(null)
+  }
 
   function handleEscape() {
     // usePhraseSelection has its own window Escape listener that cancels an
@@ -183,7 +199,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
     // cancelling a drag would also navigate the user out of the reader.
     if (dragRange) return
     if (selectedWord) {
-      setSelectedWord(null)
+      closeCard()
       return
     }
     void navigate({ to: '/learn/$lang/library', params: { lang } })
@@ -384,7 +400,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
               page={currentPage}
               statuses={statusMap}
               phraseIndex={phraseIndex}
-              dragRange={dragRange}
+              dragRange={dragRange ?? selectionRange}
               onWordClick={handleWordClick}
               onPhraseClick={handlePhraseClick}
             />
@@ -397,7 +413,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
               sentence={currentSentence}
               statuses={statusMap}
               phraseIndex={phraseIndex}
-              dragRange={dragRange}
+              dragRange={dragRange ?? selectionRange}
               lang={content.language_code}
               targetLang={DEFAULT_TRANSLATION_LANG}
               onWordClick={handleWordClick}
@@ -444,7 +460,8 @@ export function ReaderPage({ lang, lessonId }: Props) {
         lang={content?.language_code ?? lang}
         target={DEFAULT_TRANSLATION_LANG}
         lessonId={lessonId}
-        onClose={() => setSelectedWord(null)}
+        onClose={closeCard}
+        onStatusApplied={() => setSelectionRange(null)}
         sentenceText={selectedSentenceText}
       />
 

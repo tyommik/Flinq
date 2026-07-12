@@ -17,10 +17,13 @@ interface Props {
   target: string
   lessonId: string | null
   onClose: () => void
+  /** Явное действие со статусом («добавили в обучение») — ридер по нему
+      гасит подсветку выделения, не закрывая карточку. */
+  onStatusApplied?: () => void
   sentenceText: string | null
 }
 
-export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }: Props) {
+export function WordCard({ word, lang, target, lessonId, onClose, onStatusApplied, sentenceText }: Props) {
   const expanded = useReaderStore((s) => s.wordCardExpanded)
   const setExpanded = useReaderStore((s) => s.setWordCardExpanded)
   const kind = word?.kind ?? 'token'
@@ -117,11 +120,13 @@ export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }
 
   async function ensureItem(nextStatus: 'tracked' | 'known' | 'ignored', conf: number | null) {
     const res = await m.setStatus.mutateAsync({ itemId, status: nextStatus, confidence: conf })
+    onStatusApplied?.()
     return res.item_id
   }
 
   function applyStatus(nextStatus: 'tracked' | 'known' | 'ignored', conf: number | null) {
     void m.setStatus.mutate({ itemId, status: nextStatus, confidence: conf })
+    onStatusApplied?.()
   }
 
   async function withItem(fn: (id: string) => Promise<unknown>): Promise<void> {

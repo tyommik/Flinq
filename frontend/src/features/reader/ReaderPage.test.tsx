@@ -11,7 +11,7 @@ if (typeof window !== 'undefined' && !window.PointerEvent) {
 
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { act, render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LessonDetail } from '@/api/lessons'
@@ -312,6 +312,102 @@ describe('ReaderPage', () => {
     const phrase = await screen.findByTestId('phrase-span')
     fireEvent.click(phrase)
     expect(await screen.findByTestId('word-card')).toBeInTheDocument()
+  })
+
+  it('keeps the clicked word highlighted while its card is open and clears on close', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue(baseLesson)
+    vi.mocked(readerApi.content).mockResolvedValue(content)
+    vi.mocked(readerApi.statuses).mockResolvedValue({})
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    vi.mocked(dictionaryApi.lookup).mockResolvedValue({
+      entries: [], attribution: { source: '', license: '', url: '' }, external_links: [],
+    })
+    vi.mocked(aiApi.translate).mockResolvedValue({ hints: [], model: '', latency_ms: 0 })
+
+    renderPage()
+
+    await screen.findByTestId('page-view-slot')
+    const hello = await screen.findByRole('button', { name: 'Hello' })
+    fireEvent.click(hello)
+    const card = await screen.findByTestId('word-card')
+
+    expect(hello.className).toContain('bg-primary/20')
+    expect(screen.getByRole('button', { name: 'world' }).className).not.toContain('bg-primary/20')
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Закрыть' }))
+    expect(screen.queryByTestId('word-card')).not.toBeInTheDocument()
+    expect(hello.className).not.toContain('bg-primary/20')
+  })
+
+  it('keeps the dragged phrase highlighted while its card is open', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue(baseLesson)
+    vi.mocked(readerApi.content).mockResolvedValue(content)
+    vi.mocked(readerApi.statuses).mockResolvedValue({})
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    vi.mocked(aiApi.translate).mockResolvedValue({ hints: [], model: '', latency_ms: 0 })
+
+    renderPage()
+
+    await screen.findByTestId('page-view-slot')
+    const hello = screen.getByRole('button', { name: 'Hello' })
+    const world = screen.getByRole('button', { name: 'world' })
+
+    fireEvent(
+      hello,
+      new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0, buttons: 1 }),
+    )
+    fireEvent(
+      world,
+      new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse', button: 0, buttons: 1 }),
+    )
+    fireEvent(
+      world,
+      new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0, buttons: 0 }),
+    )
+
+    const card = await screen.findByTestId('word-card')
+    expect(hello.className).toContain('bg-primary/20')
+    expect(world.className).toContain('bg-primary/20')
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Закрыть' }))
+    expect(hello.className).not.toContain('bg-primary/20')
+    expect(world.className).not.toContain('bg-primary/20')
+  })
+
+  it('clears the selection highlight when a status is applied but keeps the card open', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue(baseLesson)
+    vi.mocked(readerApi.content).mockResolvedValue(content)
+    vi.mocked(readerApi.statuses).mockResolvedValue({})
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    vi.mocked(vocabularyApi.createItem).mockResolvedValue({
+      item_id: 't1', status: 'tracked', confidence: 1,
+    })
+    vi.mocked(dictionaryApi.lookup).mockResolvedValue({
+      entries: [], attribution: { source: '', license: '', url: '' }, external_links: [],
+    })
+    vi.mocked(aiApi.translate).mockResolvedValue({ hints: [], model: '', latency_ms: 0 })
+
+    renderPage()
+
+    await screen.findByTestId('page-view-slot')
+    const hello = await screen.findByRole('button', { name: 'Hello' })
+    fireEvent.click(hello)
+    await screen.findByTestId('word-card')
+    expect(hello.className).toContain('bg-primary/20')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Уровень 1' }))
+
+    await waitFor(() => expect(hello.className).not.toContain('bg-primary/20'))
+    expect(screen.getByTestId('word-card')).toBeInTheDocument()
   })
 
   it('Escape during an active phrase drag cancels the drag instead of navigating to the library', async () => {
