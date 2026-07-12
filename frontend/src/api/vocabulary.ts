@@ -22,6 +22,13 @@ export interface WordLookup {
   tags: string[]
 }
 
+export interface PhraseListEntry {
+  item_id: string
+  phrase_text: string
+  status: 'tracked' | 'known' | 'ignored'
+  confidence: number | null
+}
+
 export interface ItemState {
   item_id: string
   status: string
@@ -30,7 +37,7 @@ export interface ItemState {
 
 export interface VocabListItem {
   item_id: string
-  kind: 'token'
+  kind: 'token' | 'phrase'
   text: string
   status: 'tracked' | 'known' | 'ignored'
   confidence: number | null
@@ -61,17 +68,23 @@ export interface VocabListParams {
   sort_dir?: 'asc' | 'desc'
   page?: number
   page_size?: number
-  kind?: 'token' | 'all'
+  kind?: 'token' | 'phrase' | 'all'
   added_by?: 'user' | 'all'
 }
 
 export const vocabularyApi = {
-  lookup: (lang: string, text: string, target: string) => {
-    const q = new URLSearchParams({ lang, text, target })
+  lookup: (lang: string, text: string, target: string, kind: ItemKind = 'token') => {
+    const q = new URLSearchParams({ lang, text, target, kind })
     return api<WordLookup>(`/api/vocabulary/lookup?${q.toString()}`)
   },
+  phrases: (lang: string) => {
+    const q = new URLSearchParams({ lang })
+    return api<{ phrases: PhraseListEntry[] }>(`/api/vocabulary/phrases?${q.toString()}`).then(
+      (r) => r.phrases,
+    )
+  },
   createItem: (body: {
-    kind: 'token'; language_code: string; text: string
+    kind: ItemKind; language_code: string; text: string
     status: WriteStatus; confidence: number | null
   }) => api<ItemState>('/api/vocabulary/items', { method: 'POST', body: JSON.stringify(body) }),
   patchItem: (kind: ItemKind, id: string, body: { status: WriteStatus; confidence: number | null }) =>
