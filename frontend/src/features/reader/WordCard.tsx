@@ -26,7 +26,7 @@ export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }
   const kind = word?.kind ?? 'token'
   const text = word?.n ?? null
   const lookup = useWordLookup(lang, text, target, kind)
-  const m = useWordCardMutations({ kind, lang, text: text ?? '', target, lessonId })
+  const m = useWordCardMutations({ kind, lang, text: text ?? '', surfaceText: word?.t ?? '', target, lessonId })
 
   const data = lookup.data
   const itemId = data?.item_id ?? null

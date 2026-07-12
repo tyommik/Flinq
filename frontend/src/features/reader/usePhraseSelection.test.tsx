@@ -83,7 +83,7 @@ function Harness({
               {tok.t}
             </span>
           ) : (
-            <span key={`${s.seg_id}-${i}`}> </span>
+            <span key={`${s.seg_id}-${i}`} data-testid={`ws-${s.seg_id}-${i}`}> </span>
           ),
         ),
       )}
@@ -234,6 +234,24 @@ describe('usePhraseSelection', () => {
 
     fireEvent.click(screen.getByTestId('w-1'))
     expect(onWordClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('a stale anchor from an abandoned press does not seed a phantom drag on a later non-word press', () => {
+    const onSelect = vi.fn()
+    render(<Harness onSelect={onSelect} />)
+    // Press on a word, then release outside the container with no drag ever
+    // starting — the window pointerup fallback isn't attached (dragging is
+    // still false), so without the fix the anchor from w-1 would survive.
+    pointer('pointerdown', screen.getByTestId('w-1'))
+    fireEvent(window, new PointerEvent('pointerup', { bubbles: true }))
+    // A later press lands on non-word chrome inside the container (e.g.
+    // punctuation/whitespace, which carries no data-ordinal).
+    pointer('pointerdown', screen.getByTestId('ws-s1-1'))
+    // Then the cursor drags over words with the button held down.
+    pointer('pointerover', screen.getByTestId('w-3'))
+    expect(screen.getByTestId('drag-range').textContent).toBe('')
+    pointer('pointerup', screen.getByTestId('w-3'))
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it(`clamps to ${MAX_PHRASE_WORDS} words, not ${MAX_PHRASE_WORDS} ordinals, across gapped punctuation ordinals`, () => {

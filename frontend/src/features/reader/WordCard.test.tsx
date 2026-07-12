@@ -363,8 +363,10 @@ describe('WordCard core', () => {
     // выставляем статус — создание item уходит с kind=phrase
     fireEvent.click(await screen.findByRole('button', { name: 'Уровень 1' }))
     await waitFor(() =>
+      // display_text must be the surface selection (with punctuation/casing),
+      // not the normalized join key — the backend persists `text` verbatim.
       expect(vocabularyApi.createItem).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'phrase', text: 'so far so good' }),
+        expect.objectContaining({ kind: 'phrase', text: 'so far, so good' }),
       ),
     )
   })

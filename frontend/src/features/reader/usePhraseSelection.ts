@@ -140,6 +140,13 @@ export function usePhraseSelection({ enabled, sentences, onSelect }: Params) {
     // через window-фоллбек за пределами контейнера — click тогда никогда не
     // приходит, и флаг некому сбросить. Чистим его на каждом новом нажатии.
     suppressClickRef.current = false
+    // A previous press may have anchored a drag that never started (button
+    // released outside the container, no drag window-fallback attached —
+    // see the "release outside before any drag" test). Without clearing it
+    // here, a later press on non-word chrome (e.g. punctuation) leaves the
+    // stale anchor alive, and dragging over words then resumes the OLD
+    // anchor — possibly from another sentence entirely.
+    anchorRef.current = null
     if (!enabled || e.pointerType !== 'mouse' || e.button !== 0) return
     const ordinal = ordinalFromEvent(e)
     if (ordinal === null) return

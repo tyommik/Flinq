@@ -23,6 +23,12 @@ export function useWordCardMutations(opts: {
   kind: ItemKind
   lang: string
   text: string
+  /** Surface form (as shown to the user) to persist as display_text on
+      create. `text` above is the normalized join key used for lookups and
+      cache invalidation — it must not be sent as the item's display text,
+      or phrases lose their punctuation/casing (e.g. "so far so good"
+      instead of "So far, so good"). */
+  surfaceText: string
   target: string
   lessonId: string | null
 }) {
@@ -42,7 +48,7 @@ export function useWordCardMutations(opts: {
     mutationFn: (v: { itemId: string | null; status: WriteStatus; confidence: number | null }) =>
       v.itemId === null
         ? vocabularyApi.createItem({
-            kind: opts.kind, language_code: opts.lang, text: opts.text,
+            kind: opts.kind, language_code: opts.lang, text: opts.surfaceText,
             status: v.status, confidence: v.confidence,
           })
         : vocabularyApi.patchItem(opts.kind, v.itemId, { status: v.status, confidence: v.confidence }),
