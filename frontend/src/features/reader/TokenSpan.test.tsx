@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Token, TokenStatusEntry } from '@/api/reader'
@@ -66,5 +66,21 @@ describe('TokenSpan', () => {
     render(<TokenSpan token={word} onWordClick={onWordClick} />)
     screen.getByText('Hello').click()
     expect(onWordClick).toHaveBeenCalledWith(word)
+  })
+
+  it('applies drag-selection background', () => {
+    render(<TokenSpan token={{ t: 'far', n: 'far', i: 1 }} dragSelected />)
+    expect(screen.getByText('far').className).toContain('bg-primary/20')
+  })
+
+  it('stops click propagation so PhraseSpan does not also fire', () => {
+    const outer = vi.fn()
+    render(
+      <div onClick={outer}>
+        <TokenSpan token={{ t: 'far', n: 'far', i: 1 }} onWordClick={() => {}} />
+      </div>,
+    )
+    fireEvent.click(screen.getByText('far'))
+    expect(outer).not.toHaveBeenCalled()
   })
 })
