@@ -4,9 +4,11 @@ import { Play } from 'lucide-react'
 import { ApiError } from '@/api/client'
 import { isWord, type Sentence, type StatusMap, type WordToken } from '@/api/reader'
 
+import type { PhraseIndex, PhraseMatch } from './phraseMatching'
+import { SentenceTokens } from './SentenceTokens'
 import { SentenceVocabList } from './SentenceVocabList'
-import { TokenSpan } from './TokenSpan'
 import { useSegmentTranslation } from './useReaderQueries'
+import type { DragRange } from './usePhraseSelection'
 
 // TODO(FLQ-9): read from user settings
 export const DEFAULT_TRANSLATION_LANG = 'ru' as const
@@ -21,9 +23,12 @@ interface Props {
   lessonId: string
   sentence: Sentence
   statuses: StatusMap
+  phraseIndex: PhraseIndex
+  dragRange: DragRange | null
   lang: string
   targetLang: 'en' | 'ru' | 'pt'
   onWordClick?: (word: SelectedWord) => void
+  onPhraseClick?: (match: PhraseMatch, sentence: Sentence) => void
 }
 
 function translationErrorMessage(error: unknown): string {
@@ -49,7 +54,17 @@ function collectVocabWords(sentence: Sentence, statuses: StatusMap): WordToken[]
   return words
 }
 
-export function SentenceView({ lessonId, sentence, statuses, lang, targetLang, onWordClick }: Props) {
+export function SentenceView({
+  lessonId,
+  sentence,
+  statuses,
+  phraseIndex,
+  dragRange,
+  lang,
+  targetLang,
+  onWordClick,
+  onPhraseClick,
+}: Props) {
   const [expanded, setExpanded] = useState(false)
   const [translationRequested, setTranslationRequested] = useState(false)
 
@@ -86,14 +101,14 @@ export function SentenceView({ lessonId, sentence, statuses, lang, targetLang, o
 
       <div className="mt-10 px-4 sm:px-16">
         <p className="text-xl leading-[1.8]">
-          {sentence.tokens.map((token, i) => (
-            <TokenSpan
-              key={i}
-              token={token}
-              status={isWord(token) ? statuses[token.n] : undefined}
-              onWordClick={onWordClick}
-            />
-          ))}
+          <SentenceTokens
+            sentence={sentence}
+            statuses={statuses}
+            phraseIndex={phraseIndex}
+            dragRange={dragRange}
+            onWordClick={onWordClick}
+            onPhraseClick={onPhraseClick}
+          />
         </p>
 
         <div className="mt-4">

@@ -341,7 +341,13 @@ export function ReaderPage({ lang, lessonId }: Props) {
         )}
         {!contentLoading && content && mode === 'page' && currentPage && (
           <div data-testid="page-view-slot">
-            <PageView page={currentPage} statuses={statusMap} onWordClick={setSelectedWord} />
+            <PageView
+              page={currentPage}
+              statuses={statusMap}
+              phraseIndex={new Map()}
+              dragRange={null}
+              onWordClick={setSelectedWord}
+            />
           </div>
         )}
         {!contentLoading && content && mode === 'sentence' && currentSentence && (
@@ -350,6 +356,8 @@ export function ReaderPage({ lang, lessonId }: Props) {
               lessonId={lessonId}
               sentence={currentSentence}
               statuses={statusMap}
+              phraseIndex={new Map()}
+              dragRange={null}
               lang={content.language_code}
               targetLang={DEFAULT_TRANSLATION_LANG}
               onWordClick={setSelectedWord}

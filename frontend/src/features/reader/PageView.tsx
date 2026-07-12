@@ -1,17 +1,22 @@
 import { Fragment } from 'react'
 
-import { isWord, type StatusMap } from '@/api/reader'
+import type { Sentence, StatusMap } from '@/api/reader'
 
 import type { PageSlice } from './pagination'
-import { TokenSpan } from './TokenSpan'
+import type { PhraseIndex, PhraseMatch } from './phraseMatching'
+import { SentenceTokens } from './SentenceTokens'
+import type { DragRange } from './usePhraseSelection'
 
 interface Props {
   page: PageSlice
   statuses: StatusMap
+  phraseIndex: PhraseIndex
+  dragRange: DragRange | null
   onWordClick?: (word: { t: string; n: string; i: number }) => void
+  onPhraseClick?: (match: PhraseMatch, sentence: Sentence) => void
 }
 
-export function PageView({ page, statuses, onWordClick }: Props) {
+export function PageView({ page, statuses, phraseIndex, dragRange, onWordClick, onPhraseClick }: Props) {
   const paragraphOrder: number[] = []
   const paragraphs = new Map<number, PageSlice['sentences']>()
   for (const entry of page.sentences) {
@@ -30,14 +35,14 @@ export function PageView({ page, statuses, onWordClick }: Props) {
             {paragraphs.get(paragraphIndex)!.map((entry, sentenceIdx) => (
               <Fragment key={entry.sentence.seg_id}>
                 {sentenceIdx > 0 && ' '}
-                {entry.sentence.tokens.map((token, tokenIdx) => (
-                  <TokenSpan
-                    key={tokenIdx}
-                    token={token}
-                    status={isWord(token) ? statuses[token.n] : undefined}
-                    onWordClick={onWordClick}
-                  />
-                ))}
+                <SentenceTokens
+                  sentence={entry.sentence}
+                  statuses={statuses}
+                  phraseIndex={phraseIndex}
+                  dragRange={dragRange}
+                  onWordClick={onWordClick}
+                  onPhraseClick={onPhraseClick}
+                />
               </Fragment>
             ))}
           </p>
