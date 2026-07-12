@@ -760,3 +760,22 @@ async def bulk_action(
             )
     await session.commit()
     return len(owned)
+
+
+async def list_phrases(
+    session: AsyncSession, *, user_id: uuid.UUID, language_code: str
+) -> list[PhraseItem]:
+    return list(
+        (
+            await session.execute(
+                select(PhraseItem)
+                .where(
+                    PhraseItem.user_id == user_id,
+                    PhraseItem.language_code == language_code,
+                )
+                .order_by(PhraseItem.created_at, PhraseItem.id)
+            )
+        )
+        .scalars()
+        .all()
+    )

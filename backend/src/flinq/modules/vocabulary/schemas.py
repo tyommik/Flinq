@@ -95,6 +95,17 @@ class TagsResponse(BaseModel):
     tags: list[str]
 
 
+class PhraseListEntryOut(BaseModel):
+    item_id: uuid.UUID
+    phrase_text: str
+    status: ItemStatus
+    confidence: int | None
+
+
+class PhraseListResponse(BaseModel):
+    phrases: list[PhraseListEntryOut]
+
+
 class PrimaryTranslationOut(BaseModel):
     text: str
     target_language_code: str

@@ -22,6 +22,8 @@ from flinq.modules.vocabulary.schemas import (
     LookupResponse,
     NoteResponse,
     PatchItemRequest,
+    PhraseListEntryOut,
+    PhraseListResponse,
     PrimaryTranslationOut,
     PutNoteRequest,
     TagsResponse,
@@ -277,6 +279,27 @@ async def remove_tag(
     except service.ItemNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND) from None
     return TagsResponse(tags=tags)
+
+
+@router.get("/phrases", response_model=PhraseListResponse)
+async def list_phrases(
+    request: Request,
+    lang: LangCode,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PhraseListResponse:
+    user_id = _require_user(request)
+    rows = await service.list_phrases(session, user_id=user_id, language_code=lang)
+    return PhraseListResponse(
+        phrases=[
+            PhraseListEntryOut(
+                item_id=r.id,
+                phrase_text=r.phrase_text,
+                status=cast('Literal["tracked", "known", "ignored"]', r.status),
+                confidence=r.confidence,
+            )
+            for r in rows
+        ]
+    )
 
 
 @router.get("", response_model=VocabListResponse)
