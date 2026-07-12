@@ -147,7 +147,7 @@ export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }
       />
       <div
         data-testid="word-card"
-        className="fixed inset-x-0 bottom-0 z-[var(--z-modal)] rounded-t-xl border border-border bg-card p-4 shadow-lg md:inset-x-auto md:right-0 md:top-0 md:h-full md:w-80 md:overflow-y-auto md:rounded-none md:border-y-0 md:border-r-0 md:border-l md:shadow-none"
+        className="fixed inset-x-0 bottom-0 z-[var(--z-modal)] rounded-t-xl border border-border bg-card p-4 shadow-lg md:inset-x-auto md:right-0 md:top-16 md:h-[calc(100vh-4rem)] md:w-80 md:overflow-y-auto md:rounded-none md:border-y-0 md:border-r-0 md:border-l md:shadow-none"
       >
         <button
           type="button" aria-label="Закрыть" onClick={onClose}

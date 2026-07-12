@@ -319,7 +319,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
   )
 
   return (
-    <div className="mx-auto max-w-screen-2xl px-6 pb-24">
+    <div className={cn('mx-auto max-w-screen-2xl px-6 pb-24', selectedWord && 'md:pr-[344px]')}>
       <ReaderTopBar
         lang={lang}
         progressPercent={progressPercent}
@@ -374,14 +374,21 @@ export function ReaderPage({ lang, lessonId }: Props) {
             aria-label={mode === 'sentence' ? 'Следующее предложение' : 'Следующая страница'}
             onClick={handleNext}
             disabled={mode === 'sentence' ? !canNextSentence : !canNext}
-            className="fixed right-2 top-1/2 z-10 -translate-y-1/2 rounded-md px-2 py-1 text-3xl text-muted-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-30"
+            className={cn(
+              'fixed right-2 top-1/2 z-10 -translate-y-1/2 rounded-md px-2 py-1 text-3xl text-muted-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-30',
+              selectedWord && 'md:right-[336px]',
+            )}
           >
             ›
           </button>
         </>
       )}
 
-      <BottomToolbar mode={mode} onToggleMode={() => setMode(mode === 'page' ? 'sentence' : 'page')} />
+      <BottomToolbar
+        mode={mode}
+        onToggleMode={() => setMode(mode === 'page' ? 'sentence' : 'page')}
+        panelOpen={selectedWord !== null}
+      />
 
       <WordCard
         word={selectedWord}

@@ -1,8 +1,12 @@
+import { cn } from '@/lib/utils'
+
 import type { ViewMode } from './readerStore'
 
 interface Props {
   mode: ViewMode
   onToggleMode: () => void
+  /** Сжать сетку действий на ширину открытой боковой панели WordCard. */
+  panelOpen?: boolean
 }
 
 interface ActionProps {
@@ -30,10 +34,15 @@ function Action({ icon, label, onClick, disabled, title }: ActionProps) {
   )
 }
 
-export function BottomToolbar({ mode, onToggleMode }: Props) {
+export function BottomToolbar({ mode, onToggleMode, panelOpen }: Props) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-[var(--z-fixed)] border-t border-border bg-background">
-      <div className="mx-auto grid max-w-screen-2xl grid-cols-3 px-6 py-3">
+      <div
+        className={cn(
+          'mx-auto grid max-w-screen-2xl grid-cols-3 px-6 py-3',
+          panelOpen && 'md:pr-[344px]',
+        )}
+      >
         <Action icon="♪" label="Сгенерировать аудио" disabled title="Скоро" />
         <Action
           icon="📖"
