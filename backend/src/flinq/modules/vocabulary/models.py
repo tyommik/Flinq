@@ -63,6 +63,50 @@ class TokenItem(Base):
     )
 
 
+class PhraseItem(Base):
+    """Saved multi-word phrase (ADR-0001: Phrase is a first-class entity).
+
+    `phrase_text` is the normalized join key (normalize_phrase output —
+    word tokens joined by single spaces); `display_text` is the raw surface
+    slice including punctuation, for the card and vocabulary list.
+    """
+
+    __tablename__ = "phrase_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    language_code: Mapped[str] = mapped_column(String(8))
+    phrase_text: Mapped[str] = mapped_column(Text)
+    display_text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16))  # tracked | known | ignored
+    confidence: Mapped[int | None] = mapped_column(Integer)
+    added_by: Mapped[str] = mapped_column(String(16), default="user", server_default="user")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "language_code", "phrase_text", name="uq_phrase_items_user_lang_text"
+        ),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 5)",
+            name="ck_phrase_items_confidence_range",
+        ),
+        CheckConstraint(
+            "(status = 'tracked') = (confidence IS NOT NULL)",
+            name="ck_phrase_items_confidence_tracked",
+        ),
+        CheckConstraint("added_by IN ('user', 'bulk')", name="ck_phrase_items_added_by"),
+        CheckConstraint(
+            "array_length(string_to_array(phrase_text, ' '), 1) BETWEEN 2 AND 8",
+            name="ck_phrase_items_word_count",
+        ),
+        Index("ix_phrase_items_user_lang", "user_id", "language_code"),
+    )
+
+
 class PersonalTranslation(Base):
     __tablename__ = "personal_translations"
 
