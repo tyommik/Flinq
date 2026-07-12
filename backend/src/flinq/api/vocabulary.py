@@ -308,7 +308,7 @@ async def list_vocabulary(
     lang: LangCode,
     session: Annotated[AsyncSession, Depends(get_session)],
     target: LangCode = "ru",
-    kind: Literal["token", "all"] = "all",
+    kind: Literal["token", "phrase", "all"] = "all",
     status_filter: Annotated[
         list[Literal["tracked", "known", "ignored"]] | None, Query(alias="status")
     ] = None,
@@ -348,7 +348,7 @@ async def list_vocabulary(
         items=[
             VocabListItemOut(
                 item_id=i.item_id,
-                kind="token",
+                kind=cast('Literal["token", "phrase"]', i.kind),
                 text=i.text,
                 status=cast('Literal["tracked", "known", "ignored"]', i.status),
                 confidence=i.confidence,

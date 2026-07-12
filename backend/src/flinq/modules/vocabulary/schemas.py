@@ -113,7 +113,7 @@ class PrimaryTranslationOut(BaseModel):
 
 class VocabListItemOut(BaseModel):
     item_id: uuid.UUID
-    kind: Literal["token"]
+    kind: Literal["token", "phrase"]
     text: str
     status: Literal["tracked", "known", "ignored"]
     confidence: int | None

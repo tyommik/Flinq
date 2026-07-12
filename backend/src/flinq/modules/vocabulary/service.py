@@ -5,9 +5,9 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import and_, delete, exists, func, or_, select, update
+from sqlalchemy import Select, and_, delete, exists, func, literal, or_, select, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -490,6 +490,88 @@ async def add_tag(
     return await _list_tags(session, user_id=user_id, kind=kind, item_id=item_id)
 
 
+def _text_column(model: type[TokenItem] | type[PhraseItem]) -> Any:
+    # pyright cannot narrow `type[X] | type[Y]` on the negative (`else`) arm of
+    # an `is` check, so the PhraseItem branch is cast explicitly.
+    if model is TokenItem:
+        return model.token_text
+    return cast("type[PhraseItem]", model).display_text
+
+
+def _branch_conditions(
+    model: type[TokenItem] | type[PhraseItem],
+    kind: str,
+    *,
+    user_id: uuid.UUID,
+    language_code: str,
+    target_language_code: str,
+    statuses: list[str],
+    confidence_min: int | None,
+    confidence_max: int | None,
+    tags: list[str],
+    q: str | None,
+    added_after: datetime | None,
+    added_by: str,
+) -> list[Any]:
+    text_col = _text_column(model)
+    conditions: list[Any] = [
+        model.user_id == user_id,
+        model.language_code == language_code,
+        model.status.in_(statuses),
+    ]
+    if added_by == "user":
+        conditions.append(model.added_by == "user")
+    if confidence_min is not None or confidence_max is not None:
+        conf: list[Any] = []
+        if confidence_min is not None:
+            conf.append(model.confidence >= confidence_min)
+        if confidence_max is not None:
+            conf.append(model.confidence <= confidence_max)
+        # narrows only tracked rows; known/ignored pass (spec §3.1)
+        conditions.append(or_(model.status != "tracked", and_(*conf)))
+    for tag in tags:
+        conditions.append(
+            exists().where(
+                ItemTag.owner_user_id == user_id,
+                ItemTag.item_kind == kind,
+                ItemTag.item_id == model.id,
+                ItemTag.tag_name == tag,
+            )
+        )
+    if q:
+        pattern = f"%{q}%"
+        conditions.append(
+            or_(
+                text_col.ilike(pattern),
+                exists().where(
+                    PersonalTranslation.owner_user_id == user_id,
+                    PersonalTranslation.item_kind == kind,
+                    PersonalTranslation.item_id == model.id,
+                    PersonalTranslation.target_language_code == target_language_code,
+                    PersonalTranslation.is_primary.is_(True),
+                    PersonalTranslation.translation_text.ilike(pattern),
+                ),
+            )
+        )
+    if added_after is not None:
+        conditions.append(model.created_at >= added_after)
+    return conditions
+
+
+def _branch_select(
+    model: type[TokenItem] | type[PhraseItem], kind: str, conditions: list[Any]
+) -> Select[Any]:
+    text_col = _text_column(model)
+    return select(
+        model.id.label("id"),
+        literal(kind).label("kind"),
+        text_col.label("text"),
+        model.status.label("status"),
+        model.confidence.label("confidence"),
+        model.created_at.label("created_at"),
+    ).where(*conditions)
+
+
 async def list_items(
     session: AsyncSession,
     *,
@@ -509,168 +591,150 @@ async def list_items(
     page_size: int,
     added_by: str = "user",
 ) -> tuple[list[VocabListItem], int]:
-    """Paginated vocabulary list (spec §3.1). `kind` accepted for the URL
-    contract but both values mean token-only until phrase_items exist."""
-    del kind  # token-only increment
-    conditions = [
-        TokenItem.user_id == user_id,
-        TokenItem.language_code == language_code,
-        TokenItem.status.in_(statuses),
-    ]
-    if added_by == "user":
-        conditions.append(TokenItem.added_by == "user")
-    if confidence_min is not None or confidence_max is not None:
-        conf: list[Any] = []
-        if confidence_min is not None:
-            conf.append(TokenItem.confidence >= confidence_min)
-        if confidence_max is not None:
-            conf.append(TokenItem.confidence <= confidence_max)
-        # narrows only tracked rows; known/ignored pass (spec §3.1)
-        conditions.append(or_(TokenItem.status != "tracked", and_(*conf)))
-    for tag in tags:
-        conditions.append(
-            exists().where(
-                ItemTag.owner_user_id == user_id,
-                ItemTag.item_kind == "token",
-                ItemTag.item_id == TokenItem.id,
-                ItemTag.tag_name == tag,
+    """Paginated vocabulary list (spec §3.1). `kind` selects `"token"` |
+    `"phrase"` | `"all"` — token and phrase rows are combined via UNION ALL
+    so both kinds can appear side by side in one page."""
+    common: dict[str, Any] = {
+        "user_id": user_id,
+        "language_code": language_code,
+        "target_language_code": target_language_code,
+        "statuses": statuses,
+        "confidence_min": confidence_min,
+        "confidence_max": confidence_max,
+        "tags": tags,
+        "q": q,
+        "added_after": added_after,
+        "added_by": added_by,
+    }
+    branches: list[Select[Any]] = []
+    if kind in ("token", "all"):
+        branches.append(
+            _branch_select(TokenItem, "token", _branch_conditions(TokenItem, "token", **common))
+        )
+    if kind in ("phrase", "all"):
+        branches.append(
+            _branch_select(
+                PhraseItem, "phrase", _branch_conditions(PhraseItem, "phrase", **common)
             )
         )
-    if q:
-        pattern = f"%{q}%"
-        conditions.append(
-            or_(
-                TokenItem.token_text.ilike(pattern),
-                exists().where(
-                    PersonalTranslation.owner_user_id == user_id,
-                    PersonalTranslation.item_kind == "token",
-                    PersonalTranslation.item_id == TokenItem.id,
-                    PersonalTranslation.target_language_code == target_language_code,
-                    PersonalTranslation.is_primary.is_(True),
-                    PersonalTranslation.translation_text.ilike(pattern),
-                ),
-            )
-        )
-    if added_after is not None:
-        conditions.append(TokenItem.created_at >= added_after)
+    base = branches[0] if len(branches) == 1 else union_all(*branches)
+    sub = base.subquery()
 
-    total = (
-        await session.execute(select(func.count()).select_from(TokenItem).where(*conditions))
-    ).scalar_one()
+    total = (await session.execute(select(func.count()).select_from(sub))).scalar_one()
 
-    order_col = TokenItem.token_text if sort == "text" else TokenItem.created_at
+    order_col = sub.c.text if sort == "text" else sub.c.created_at
     order_by = order_col.asc() if sort_dir == "asc" else order_col.desc()
     rows = (
-        (
-            await session.execute(
-                select(TokenItem)
-                .where(*conditions)
-                .order_by(order_by, TokenItem.id)
-                .offset((page - 1) * page_size)
-                .limit(page_size)
-            )
+        await session.execute(
+            select(sub)
+            .order_by(order_by, sub.c.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
-        .scalars()
-        .all()
-    )
+    ).all()
     if not rows:
         return [], total
 
-    ids = [r.id for r in rows]
-    texts = [r.token_text for r in rows]
+    ids_by_kind: dict[str, list[uuid.UUID]] = {}
+    for r in rows:
+        ids_by_kind.setdefault(r.kind, []).append(r.id)
 
-    primary_map: dict[uuid.UUID, PersonalTranslation] = {
-        t.item_id: t
+    primary_map: dict[tuple[str, uuid.UUID], PersonalTranslation] = {}
+    tags_map: dict[tuple[str, uuid.UUID], list[str]] = {}
+    for row_kind, ids in ids_by_kind.items():
         for t in (
             await session.execute(
                 select(PersonalTranslation).where(
                     PersonalTranslation.owner_user_id == user_id,
-                    PersonalTranslation.item_kind == "token",
+                    PersonalTranslation.item_kind == row_kind,
                     PersonalTranslation.item_id.in_(ids),
                     PersonalTranslation.target_language_code == target_language_code,
                     PersonalTranslation.is_primary.is_(True),
                 )
             )
-        )
-        .scalars()
-        .all()
-    }
-
-    tags_map: dict[uuid.UUID, list[str]] = {}
-    for item_id, tag_name in (
-        await session.execute(
-            select(ItemTag.item_id, ItemTag.tag_name)
-            .where(
-                ItemTag.owner_user_id == user_id,
-                ItemTag.item_kind == "token",
-                ItemTag.item_id.in_(ids),
-            )
-            .order_by(ItemTag.tag_name)
-        )
-    ).all():
-        tags_map.setdefault(item_id, []).append(tag_name)
-
-    pos_map: dict[str, str] = {
-        headword: pos
-        for headword, pos in (
+        ).scalars():
+            primary_map[(row_kind, t.item_id)] = t
+        for item_id, tag_name in (
             await session.execute(
-                select(DictionaryEntry.headword_normalized, DictionaryEntry.part_of_speech)
-                .distinct(DictionaryEntry.headword_normalized)
-                .join(
-                    DictionarySourceVersion,
-                    DictionaryEntry.source_version_id == DictionarySourceVersion.id,
-                )
+                select(ItemTag.item_id, ItemTag.tag_name)
                 .where(
-                    DictionarySourceVersion.status == "active",
-                    DictionaryEntry.source_language_code == language_code,
-                    DictionaryEntry.headword_normalized.in_(texts),
-                    DictionaryEntry.part_of_speech.is_not(None),
+                    ItemTag.owner_user_id == user_id,
+                    ItemTag.item_kind == row_kind,
+                    ItemTag.item_id.in_(ids),
                 )
-                .order_by(DictionaryEntry.headword_normalized, DictionaryEntry.entry_key)
+                .order_by(ItemTag.tag_name)
             )
-        ).all()
-        if pos is not None
-    }
+        ).all():
+            tags_map.setdefault((row_kind, item_id), []).append(tag_name)
 
-    # One example sentence per token: latest lesson's occurrence (spec §3.1).
-    occ = (
-        select(
-            LessonTokenOccurrence.normalized_text.label("norm"),
-            LessonSegment.text.label("segment_text"),
+    texts = [r.text for r in rows if r.kind == "token"]
+
+    pos_map: dict[str, str] = {}
+    if texts:
+        pos_map = {
+            headword: pos
+            for headword, pos in (
+                await session.execute(
+                    select(DictionaryEntry.headword_normalized, DictionaryEntry.part_of_speech)
+                    .distinct(DictionaryEntry.headword_normalized)
+                    .join(
+                        DictionarySourceVersion,
+                        DictionaryEntry.source_version_id == DictionarySourceVersion.id,
+                    )
+                    .where(
+                        DictionarySourceVersion.status == "active",
+                        DictionaryEntry.source_language_code == language_code,
+                        DictionaryEntry.headword_normalized.in_(texts),
+                        DictionaryEntry.part_of_speech.is_not(None),
+                    )
+                    .order_by(DictionaryEntry.headword_normalized, DictionaryEntry.entry_key)
+                )
+            ).all()
+            if pos is not None
+        }
+
+    context_map: dict[str, str] = {}
+    if texts:
+        # One example sentence per token: latest lesson's occurrence (spec §3.1).
+        occ = (
+            select(
+                LessonTokenOccurrence.normalized_text.label("norm"),
+                LessonSegment.text.label("segment_text"),
+            )
+            .distinct(LessonTokenOccurrence.normalized_text)
+            .join(Lesson, LessonTokenOccurrence.lesson_id == Lesson.id)
+            .join(LessonSegment, LessonTokenOccurrence.segment_id == LessonSegment.id)
+            .where(
+                Lesson.owner_user_id == user_id,
+                Lesson.language_code == language_code,
+                LessonTokenOccurrence.normalized_text.in_(texts),
+            )
+            .order_by(
+                LessonTokenOccurrence.normalized_text,
+                Lesson.created_at.desc(),
+                LessonTokenOccurrence.ordinal_in_lesson,
+            )
         )
-        .distinct(LessonTokenOccurrence.normalized_text)
-        .join(Lesson, LessonTokenOccurrence.lesson_id == Lesson.id)
-        .join(LessonSegment, LessonTokenOccurrence.segment_id == LessonSegment.id)
-        .where(
-            Lesson.owner_user_id == user_id,
-            Lesson.language_code == language_code,
-            LessonTokenOccurrence.normalized_text.in_(texts),
-        )
-        .order_by(
-            LessonTokenOccurrence.normalized_text,
-            Lesson.created_at.desc(),
-            LessonTokenOccurrence.ordinal_in_lesson,
-        )
-    )
-    context_map: dict[str, str] = {  # noqa: C416 -- explicit unpack keeps Row types clear for pyright
-        norm: segment_text for norm, segment_text in (await session.execute(occ)).all()
-    }
+        context_map = {  # noqa: C416 -- explicit unpack keeps Row types clear for pyright
+            norm: segment_text for norm, segment_text in (await session.execute(occ)).all()
+        }
 
     result: list[VocabListItem] = []
     for r in rows:
-        primary = primary_map.get(r.id)
+        primary = primary_map.get((r.kind, r.id))
+        is_token = r.kind == "token"
         result.append(
             VocabListItem(
                 item_id=r.id,
-                kind="token",
-                text=r.token_text,
+                kind=r.kind,
+                text=r.text,
                 status=r.status,
                 confidence=r.confidence,
                 primary_translation_text=primary.translation_text if primary else None,
                 primary_translation_target=(primary.target_language_code if primary else None),
-                tags=tags_map.get(r.id, []),
-                pos=pos_map.get(r.token_text),
-                context=context_map.get(r.token_text),
+                tags=tags_map.get((r.kind, r.id), []),
+                pos=pos_map.get(r.text) if is_token else None,
+                context=context_map.get(r.text) if is_token else None,
                 created_at=r.created_at,
             )
         )
