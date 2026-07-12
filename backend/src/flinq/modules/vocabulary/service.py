@@ -14,11 +14,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from flinq.core.textnorm import normalize_token
 from flinq.modules.dictionary.models import DictionaryEntry, DictionarySourceVersion
 from flinq.modules.lesson_library.models import Lesson, LessonSegment, LessonTokenOccurrence
-from flinq.modules.vocabulary.models import ItemTag, PersonalNote, PersonalTranslation, TokenItem
+from flinq.modules.vocabulary.models import (
+    ItemTag,
+    PersonalNote,
+    PersonalTranslation,
+    PhraseItem,
+    TokenItem,
+)
+
+VocabItem = TokenItem | PhraseItem
+
+_MODEL_BY_KIND: dict[str, type[TokenItem] | type[PhraseItem]] = {
+    "token": TokenItem,
+    "phrase": PhraseItem,
+}
 
 
 class UnsupportedKind(Exception):  # noqa: N818 -- name fixed by Task 2 interface contract
-    """Only 'token' is supported in Increment 1."""
+    """Kind is not one of 'token' | 'phrase'."""
 
 
 class ItemNotFound(Exception):  # noqa: N818 -- name fixed by Task 2 interface contract
@@ -60,11 +73,11 @@ class VocabListItem:
 
 
 def _check_kind(kind: str) -> None:
-    if kind != "token":
+    if kind not in _MODEL_BY_KIND:
         raise UnsupportedKind(kind)
 
 
-def _promote_to_user(item: TokenItem) -> None:
+def _promote_to_user(item: VocabItem) -> None:
     """Explicit user action on a bulk-created item claims it (spec FLQ-6.2 §1.2)."""
     if item.added_by != "user":
         item.added_by = "user"
@@ -82,9 +95,9 @@ async def _get_token_item(
 
 
 async def _owned_item(
-    session: AsyncSession, *, user_id: uuid.UUID, item_id: uuid.UUID
-) -> TokenItem:
-    item = await session.get(TokenItem, item_id)
+    session: AsyncSession, *, user_id: uuid.UUID, kind: str, item_id: uuid.UUID
+) -> VocabItem:
+    item = await session.get(_MODEL_BY_KIND[kind], item_id)
     if item is None or item.user_id != user_id:
         raise ItemNotFound(str(item_id))
     return item
@@ -132,9 +145,9 @@ async def patch_item(
     item_id: uuid.UUID,
     status: str,
     confidence: int | None,
-) -> TokenItem:
+) -> VocabItem:
     _check_kind(kind)
-    item = await _owned_item(session, user_id=user_id, item_id=item_id)
+    item = await _owned_item(session, user_id=user_id, kind=kind, item_id=item_id)
     item.status = status
     item.confidence = confidence
     _promote_to_user(item)
@@ -142,14 +155,16 @@ async def patch_item(
     return item
 
 
-async def _list_tags(session: AsyncSession, *, user_id: uuid.UUID, item_id: uuid.UUID) -> list[str]:
+async def _list_tags(
+    session: AsyncSession, *, user_id: uuid.UUID, kind: str, item_id: uuid.UUID
+) -> list[str]:
     return list(
         (
             await session.execute(
                 select(ItemTag.tag_name)
                 .where(
                     ItemTag.owner_user_id == user_id,
-                    ItemTag.item_kind == "token",
+                    ItemTag.item_kind == kind,
                     ItemTag.item_id == item_id,
                 )
                 .order_by(ItemTag.tag_name)
@@ -174,7 +189,7 @@ async def _owned_translation(
 
 
 async def _item_translations(
-    session: AsyncSession, *, user_id: uuid.UUID, item_id: uuid.UUID
+    session: AsyncSession, *, user_id: uuid.UUID, kind: str, item_id: uuid.UUID
 ) -> list[PersonalTranslation]:
     return list(
         (
@@ -182,7 +197,7 @@ async def _item_translations(
                 select(PersonalTranslation)
                 .where(
                     PersonalTranslation.owner_user_id == user_id,
-                    PersonalTranslation.item_kind == "token",
+                    PersonalTranslation.item_kind == kind,
                     PersonalTranslation.item_id == item_id,
                 )
                 .order_by(PersonalTranslation.is_primary.desc(), PersonalTranslation.created_at)
@@ -215,7 +230,7 @@ async def lookup(
             note=None,
             tags=[],
         )
-    translations = await _item_translations(session, user_id=user_id, item_id=item.id)
+    translations = await _item_translations(session, user_id=user_id, kind="token", item_id=item.id)
     primary = next(
         (
             t
@@ -233,7 +248,7 @@ async def lookup(
             )
         )
     ).scalar_one_or_none()
-    tags = await _list_tags(session, user_id=user_id, item_id=item.id)
+    tags = await _list_tags(session, user_id=user_id, kind="token", item_id=item.id)
     return LookupResult(
         item_id=item.id,
         status=item.status,
@@ -262,11 +277,11 @@ async def add_translation(
     variant for the (owner, item, target) becomes primary (§2.2 of the spec).
     """
     _check_kind(kind)
-    item = await _owned_item(session, user_id=user_id, item_id=item_id)
+    item = await _owned_item(session, user_id=user_id, kind=kind, item_id=item_id)
     _promote_to_user(item)
     scope = (
         PersonalTranslation.owner_user_id == user_id,
-        PersonalTranslation.item_kind == "token",
+        PersonalTranslation.item_kind == kind,
         PersonalTranslation.item_id == item_id,
         PersonalTranslation.target_language_code == target_language_code,
     )
@@ -284,7 +299,7 @@ async def add_translation(
     ).scalar_one_or_none() is not None
     row = PersonalTranslation(
         owner_user_id=user_id,
-        item_kind="token",
+        item_kind=kind,
         item_id=item_id,
         target_language_code=target_language_code,
         translation_text=translation_text,
@@ -306,7 +321,7 @@ async def update_translation(
     translation_text: str,
 ) -> PersonalTranslation:
     _check_kind(kind)
-    item = await _owned_item(session, user_id=user_id, item_id=item_id)
+    item = await _owned_item(session, user_id=user_id, kind=kind, item_id=item_id)
     _promote_to_user(item)
     row = await _owned_translation(
         session, user_id=user_id, item_id=item_id, translation_id=translation_id
@@ -317,7 +332,7 @@ async def update_translation(
         await session.execute(
             select(PersonalTranslation.id).where(
                 PersonalTranslation.owner_user_id == user_id,
-                PersonalTranslation.item_kind == "token",
+                PersonalTranslation.item_kind == kind,
                 PersonalTranslation.item_id == item_id,
                 PersonalTranslation.target_language_code == row.target_language_code,
                 PersonalTranslation.translation_text == translation_text,
@@ -342,7 +357,7 @@ async def delete_translation(
     translation_id: uuid.UUID,
 ) -> list[PersonalTranslation]:
     _check_kind(kind)
-    item = await _owned_item(session, user_id=user_id, item_id=item_id)
+    item = await _owned_item(session, user_id=user_id, kind=kind, item_id=item_id)
     _promote_to_user(item)
     row = await _owned_translation(
         session, user_id=user_id, item_id=item_id, translation_id=translation_id
@@ -357,7 +372,7 @@ async def delete_translation(
                 select(PersonalTranslation)
                 .where(
                     PersonalTranslation.owner_user_id == user_id,
-                    PersonalTranslation.item_kind == "token",
+                    PersonalTranslation.item_kind == kind,
                     PersonalTranslation.item_id == item_id,
                     PersonalTranslation.target_language_code == target,
                 )
@@ -368,7 +383,7 @@ async def delete_translation(
         if successor is not None:
             successor.is_primary = True
     await session.commit()
-    return await _item_translations(session, user_id=user_id, item_id=item_id)
+    return await _item_translations(session, user_id=user_id, kind=kind, item_id=item_id)
 
 
 async def put_note(
@@ -380,14 +395,14 @@ async def put_note(
     note_text: str,
 ) -> PersonalNote:
     _check_kind(kind)
-    item = await _owned_item(session, user_id=user_id, item_id=item_id)
+    item = await _owned_item(session, user_id=user_id, kind=kind, item_id=item_id)
     _promote_to_user(item)
     stmt = (
         pg_insert(PersonalNote)
         .values(
             id=uuid.uuid4(),
             owner_user_id=user_id,
-            item_kind="token",
+            item_kind=kind,
             item_id=item_id,
             note_text=note_text,
         )
@@ -408,21 +423,21 @@ async def add_tag(
     tag_name: str,
 ) -> list[str]:
     _check_kind(kind)
-    item = await _owned_item(session, user_id=user_id, item_id=item_id)
+    item = await _owned_item(session, user_id=user_id, kind=kind, item_id=item_id)
     _promote_to_user(item)
     await session.execute(
         pg_insert(ItemTag)
         .values(
             id=uuid.uuid4(),
             owner_user_id=user_id,
-            item_kind="token",
+            item_kind=kind,
             item_id=item_id,
             tag_name=tag_name,
         )
         .on_conflict_do_nothing(constraint="uq_item_tags")
     )
     await session.commit()
-    return await _list_tags(session, user_id=user_id, item_id=item_id)
+    return await _list_tags(session, user_id=user_id, kind=kind, item_id=item_id)
 
 
 async def list_items(
@@ -621,18 +636,18 @@ async def remove_tag(
     tag_name: str,
 ) -> list[str]:
     _check_kind(kind)
-    item = await _owned_item(session, user_id=user_id, item_id=item_id)
+    item = await _owned_item(session, user_id=user_id, kind=kind, item_id=item_id)
     _promote_to_user(item)
     await session.execute(
         delete(ItemTag).where(
             ItemTag.owner_user_id == user_id,
-            ItemTag.item_kind == "token",
+            ItemTag.item_kind == kind,
             ItemTag.item_id == item_id,
             ItemTag.tag_name == tag_name,
         )
     )
     await session.commit()
-    return await _list_tags(session, user_id=user_id, item_id=item_id)
+    return await _list_tags(session, user_id=user_id, kind=kind, item_id=item_id)
 
 
 async def bulk_action(
