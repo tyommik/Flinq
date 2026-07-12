@@ -54,6 +54,15 @@ def tokenize(text: str, *, base_offset: int = 0) -> list[Token]:
     return tokens
 
 
+def normalize_phrase(surface: str) -> str:
+    """Phrase join key (ADR-0001): normalized word tokens joined by single spaces.
+
+    Uses the same tokenizer as lesson import, so the result always matches the
+    `normalized_text` sequence of lesson tokens. Punctuation tokens are dropped.
+    """
+    return " ".join(t.normalized_text for t in tokenize(surface) if t.is_word_like)
+
+
 # ---------------------------------------------------------------------------
 # Sentence / paragraph segmentation
 # ---------------------------------------------------------------------------
