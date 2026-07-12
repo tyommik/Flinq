@@ -22,12 +22,7 @@ import {
 } from './useReaderQueries'
 import { useSwipe } from './useSwipe'
 import { WordCard } from './WordCard'
-
-interface SelectedWord {
-  t: string
-  n: string
-  i: number
-}
+import type { SelectedItem } from './selectedItem'
 
 interface Props {
   lang: string
@@ -46,7 +41,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
   const { data: content, isLoading: contentLoading } = useLessonContent(lessonId, contentEnabled)
   const { data: statuses } = useTokenStatuses(lessonId, contentEnabled)
 
-  const [selectedWord, setSelectedWord] = useState<SelectedWord | null>(null)
+  const [selectedWord, setSelectedWord] = useState<SelectedItem | null>(null)
   const [toastCount, setToastCount] = useState<number | null>(null)
   const [bulkErrorVisible, setBulkErrorVisible] = useState(false)
 
@@ -142,6 +137,9 @@ export function ReaderPage({ lang, lessonId }: Props) {
   }, [currentOrdinalForProgress, maxWordOrdinal])
 
   const readyForInteraction = contentEnabled && !!content
+
+  const handleWordClick = (w: { t: string; n: string; i: number }) =>
+    setSelectedWord({ kind: 'token', ...w, sentenceText: null })
 
   function handleEscape() {
     if (selectedWord) {
@@ -346,7 +344,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
               statuses={statusMap}
               phraseIndex={new Map()}
               dragRange={null}
-              onWordClick={setSelectedWord}
+              onWordClick={handleWordClick}
             />
           </div>
         )}
@@ -360,7 +358,7 @@ export function ReaderPage({ lang, lessonId }: Props) {
               dragRange={null}
               lang={content.language_code}
               targetLang={DEFAULT_TRANSLATION_LANG}
-              onWordClick={setSelectedWord}
+              onWordClick={handleWordClick}
             />
           </div>
         )}

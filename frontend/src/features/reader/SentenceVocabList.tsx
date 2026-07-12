@@ -20,8 +20,8 @@ export function SentenceVocabList({ words, statuses, lang, target, onWordClick }
   // открытие карточки и список делят кэш и не дублируют запросы.
   const lookups = useQueries({
     queries: words.map((w) => ({
-      queryKey: wordLookupKey(lang, w.n, target),
-      queryFn: () => vocabularyApi.lookup(lang, w.n, target),
+      queryKey: wordLookupKey('token', lang, w.n, target),
+      queryFn: () => vocabularyApi.lookup(lang, w.n, target, 'token'),
     })),
   })
 

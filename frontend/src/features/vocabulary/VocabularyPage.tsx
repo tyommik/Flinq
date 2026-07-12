@@ -297,7 +297,10 @@ export function VocabularyPage({ lang, tab }: Props) {
 
       {selectedItem && (
         <WordCard
-          word={{ t: selectedItem.text, n: selectedItem.text, i: -1 }}
+          word={{
+            kind: selectedItem.kind, t: selectedItem.text, n: selectedItem.text, i: -1,
+            sentenceText: selectedItem.context,
+          }}
           lang={lang}
           target={VOCAB_TARGET}
           lessonId={null}

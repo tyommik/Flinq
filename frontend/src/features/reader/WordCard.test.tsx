@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,12 +25,17 @@ function renderCard(sentenceText: string | null = null, lessonId: string | null 
   return render(
     <QueryClientProvider client={qc}>
       <WordCard
-        word={{ t: 'cada', n: 'cada', i: 0 }}
+        word={{ kind: 'token', t: 'cada', n: 'cada', i: 0, sentenceText: null }}
         lang="pt" target="ru" lessonId={lessonId} onClose={() => {}}
         sentenceText={sentenceText}
       />
     </QueryClientProvider>,
   )
+}
+
+function wrapper({ children }: { children: ReactNode }) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
 
 describe('WordCard core', () => {
@@ -336,5 +342,46 @@ describe('WordCard core', () => {
     expect(aiApi.translate).not.toHaveBeenCalledWith(
       expect.objectContaining({ lesson_id: expect.anything() }),
     )
+  })
+
+  it('phrase card: no dictionary lookup, creates item with kind=phrase', async () => {
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+    vi.mocked(vocabularyApi.createItem).mockResolvedValue({ item_id: 'I1', status: 'tracked', confidence: 0 })
+
+    render(
+      <WordCard
+        word={{ kind: 'phrase', t: 'so far, so good', n: 'so far so good', i: 10, sentenceText: 'So far, so good it is.' }}
+        lang="en" target="ru" lessonId="l1" onClose={() => {}} sentenceText={null}
+      />,
+      { wrapper },
+    )
+    expect(await screen.findByText('so far, so good')).toBeInTheDocument()
+    expect(dictionaryApi.lookup).not.toHaveBeenCalled()
+    // выставляем статус — создание item уходит с kind=phrase
+    fireEvent.click(await screen.findByRole('button', { name: 'Уровень 1' }))
+    await waitFor(() =>
+      expect(vocabularyApi.createItem).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'phrase', text: 'so far so good' }),
+      ),
+    )
+  })
+
+  it('token card still queries the dictionary', async () => {
+    vi.mocked(vocabularyApi.lookup).mockResolvedValue({
+      item_id: null, status: 'new', confidence: null,
+      translations: { primary: null, all: [] }, note: null, tags: [],
+    })
+
+    render(
+      <WordCard
+        word={{ kind: 'token', t: 'far', n: 'far', i: 1, sentenceText: null }}
+        lang="en" target="ru" lessonId="l1" onClose={() => {}} sentenceText="It is far."
+      />,
+      { wrapper },
+    )
+    await waitFor(() => expect(dictionaryApi.lookup).toHaveBeenCalled())
   })
 })

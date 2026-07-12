@@ -9,15 +9,10 @@ import { dictionaryApi } from '@/api/dictionary'
 import { aiApi } from '@/api/ai'
 import { ApiError } from '@/api/client'
 import { ConfidencePicker } from '@/components/ConfidencePicker'
-
-interface SelectedWord {
-  t: string
-  n: string
-  i: number
-}
+import type { SelectedItem } from './selectedItem'
 
 interface Props {
-  word: SelectedWord | null
+  word: SelectedItem | null
   lang: string
   target: string
   lessonId: string | null
@@ -28,9 +23,10 @@ interface Props {
 export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }: Props) {
   const expanded = useReaderStore((s) => s.wordCardExpanded)
   const setExpanded = useReaderStore((s) => s.setWordCardExpanded)
+  const kind = word?.kind ?? 'token'
   const text = word?.n ?? null
-  const lookup = useWordLookup(lang, text, target)
-  const m = useWordCardMutations({ lang, text: text ?? '', target, lessonId })
+  const lookup = useWordLookup(lang, text, target, kind)
+  const m = useWordCardMutations({ kind, lang, text: text ?? '', target, lessonId })
 
   const data = lookup.data
   const itemId = data?.item_id ?? null
@@ -51,11 +47,11 @@ export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }
   // `status` defaults to 'new' pre-lookup, which would otherwise race an
   // AI call for a word that turns out to be tracked/ignored.
   const wantAi = data?.status === 'new' || data?.status === 'known'
-  const aiContext = sentenceText ?? word?.t ?? ''
+  const aiContext = word?.sentenceText ?? sentenceText ?? word?.t ?? ''
   const dict = useQuery({
     queryKey: ['dict', lang, target, text ?? ''],
     queryFn: () => dictionaryApi.lookup(lang, target, text as string),
-    enabled: text !== null,
+    enabled: text !== null && kind === 'token',
   })
   const ai = useQuery({
     queryKey: ['ai-hint', lang, target, text ?? '', aiContext],
