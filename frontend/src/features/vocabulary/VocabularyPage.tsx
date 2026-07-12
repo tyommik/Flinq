@@ -277,8 +277,14 @@ export function VocabularyPage({ lang, tab }: Props) {
               onToggleSelected={toggleSelected}
               onSelectPage={selectMany}
               onClearSelection={clearSelection}
-              onPick={(itemId, status, confidence) =>
-                patchItem.mutate({ itemId, status, confidence })}
+              onPick={(itemId, status, confidence) => {
+                // onPick only carries the item id (row-agnostic prop
+                // contract shared with VocabularyCardList) — resolve the
+                // item's kind from the current page so the patch hits the
+                // right endpoint (PATCH /items/token/{id} vs .../phrase/{id}).
+                const kind = items.find((i) => i.item_id === itemId)?.kind ?? 'token'
+                patchItem.mutate({ itemId, kind, status, confidence })
+              }}
               onOpenTerm={setSelectedItem}
             />
             <VocabularyCardList
@@ -287,8 +293,14 @@ export function VocabularyPage({ lang, tab }: Props) {
               onToggleSelected={toggleSelected}
               onSelectPage={selectMany}
               onClearSelection={clearSelection}
-              onPick={(itemId, status, confidence) =>
-                patchItem.mutate({ itemId, status, confidence })}
+              onPick={(itemId, status, confidence) => {
+                // onPick only carries the item id (row-agnostic prop
+                // contract shared with VocabularyCardList) — resolve the
+                // item's kind from the current page so the patch hits the
+                // right endpoint (PATCH /items/token/{id} vs .../phrase/{id}).
+                const kind = items.find((i) => i.item_id === itemId)?.kind ?? 'token'
+                patchItem.mutate({ itemId, kind, status, confidence })
+              }}
               onOpenTerm={setSelectedItem}
             />
           </>

@@ -213,6 +213,32 @@ describe('VocabularyPage states', () => {
     })
   })
 
+  it('patches a phrase row with kind=phrase (not the hardcoded token), so it hits the right endpoint', async () => {
+    const phraseItem: VocabListItem = {
+      item_id: 'p1',
+      kind: 'phrase',
+      text: 'so far, so good',
+      status: 'tracked',
+      confidence: 1,
+      primary_translation: null,
+      tags: [],
+      pos: null,
+      context: null,
+      created_at: '2026-01-01T00:00:00Z',
+    }
+    vi.mocked(vocabularyApi.list).mockResolvedValue({ items: [phraseItem], total: 1, page: 1, page_size: 25 })
+    vi.mocked(vocabularyApi.patchItem).mockResolvedValue({ item_id: 'p1', status: 'tracked', confidence: 3 })
+
+    renderPage()
+
+    const pills = await screen.findAllByRole('button', { name: 'Уровень 3' })
+    fireEvent.click(pills[0]!)
+
+    await waitFor(() => {
+      expect(vocabularyApi.patchItem).toHaveBeenCalledWith('phrase', 'p1', { status: 'tracked', confidence: 3 })
+    })
+  })
+
   it('renders the tabs as a segmented control with the active tab styled and disabled placeholders', async () => {
     vi.mocked(vocabularyApi.list).mockResolvedValue({ items: [item], total: 1, page: 1, page_size: 25 })
 

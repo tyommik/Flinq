@@ -360,6 +360,13 @@ describe('WordCard core', () => {
     )
     expect(await screen.findByText('so far, so good')).toBeInTheDocument()
     expect(dictionaryApi.lookup).not.toHaveBeenCalled()
+    // Phrase lookup must send the SURFACE text, not the pre-normalized join
+    // key: server-side normalize_phrase is not idempotent, so re-normalizing
+    // `word.n` would compute a different key than createItem's surface-based
+    // save and the just-saved phrase would look perpetually "new".
+    await waitFor(() => {
+      expect(vocabularyApi.lookup).toHaveBeenCalledWith('en', 'so far, so good', 'ru', 'phrase')
+    })
     // выставляем статус — создание item уходит с kind=phrase
     fireEvent.click(await screen.findByRole('button', { name: 'Уровень 1' }))
     await waitFor(() =>
@@ -379,11 +386,18 @@ describe('WordCard core', () => {
 
     render(
       <WordCard
-        word={{ kind: 'token', t: 'far', n: 'far', i: 1, sentenceText: null }}
+        // t (surface) and n (normalized) deliberately differ here to prove
+        // the token path keeps using the normalized `n`, unlike phrases.
+        word={{ kind: 'token', t: 'Far', n: 'far', i: 1, sentenceText: null }}
         lang="en" target="ru" lessonId="l1" onClose={() => {}} sentenceText="It is far."
       />,
       { wrapper },
     )
     await waitFor(() => expect(dictionaryApi.lookup).toHaveBeenCalled())
+    // Token normalization IS idempotent, so token lookups keep sending the
+    // normalized join key `n` (not the surface `t`).
+    await waitFor(() => {
+      expect(vocabularyApi.lookup).toHaveBeenCalledWith('en', 'far', 'ru', 'token')
+    })
   })
 })

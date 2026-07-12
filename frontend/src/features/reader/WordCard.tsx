@@ -24,7 +24,12 @@ export function WordCard({ word, lang, target, lessonId, onClose, sentenceText }
   const expanded = useReaderStore((s) => s.wordCardExpanded)
   const setExpanded = useReaderStore((s) => s.setWordCardExpanded)
   const kind = word?.kind ?? 'token'
-  const text = word?.n ?? null
+  // Phrase lookups must send the raw surface text: server-side
+  // `normalize_phrase` is not idempotent, so re-normalizing an already
+  // normalized phrase key (as `word.n` would be) can compute a DIFFERENT
+  // key than the one `createItem` saved from the surface. Token
+  // normalization IS idempotent, so tokens keep using `word.n`.
+  const text = word ? (kind === 'phrase' ? word.t : word.n) : null
   const lookup = useWordLookup(lang, text, target, kind)
   const m = useWordCardMutations({ kind, lang, text: text ?? '', surfaceText: word?.t ?? '', target, lessonId })
 
