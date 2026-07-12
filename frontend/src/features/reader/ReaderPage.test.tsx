@@ -217,6 +217,7 @@ describe('ReaderPage', () => {
     })
     vi.mocked(readerApi.content).mockResolvedValue(content)
     vi.mocked(readerApi.statuses).mockResolvedValue({})
+    vi.mocked(readerApi.bulkKnown).mockResolvedValue({ action_id: 'action-1', created_count: 2 })
     vi.mocked(vocabularyApi.lookup).mockResolvedValue({
       item_id: null, status: 'new', confidence: null,
       translations: { primary: null, all: [] }, note: null, tags: [],

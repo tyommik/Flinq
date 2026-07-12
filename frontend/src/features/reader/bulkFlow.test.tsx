@@ -182,7 +182,9 @@ describe('bulk-known flow, undo, hotkeys', () => {
     expect(screen.queryByTestId('undo-toast')).not.toBeInTheDocument()
   })
 
-  it('toggles view mode with "m" and navigates with ArrowRight', async () => {
+  it('toggles view mode with "m" and marks the sentence known on ArrowRight', async () => {
+    vi.mocked(readerApi.bulkKnown).mockResolvedValue({ action_id: 'action-3', created_count: 5 })
+
     renderPage()
 
     await screen.findByTestId('page-view-slot')
@@ -192,7 +194,87 @@ describe('bulk-known flow, undo, hotkeys', () => {
     expect(screen.getByTestId('sentence-view-slot')).toHaveTextContent('w0')
 
     fireEvent.keyDown(window, { key: 'ArrowRight' })
+    await waitFor(() =>
+      expect(firstCallArg(vi.mocked(readerApi.bulkKnown))).toEqual({
+        lesson_id: 'lesson-1',
+        from_ordinal: 0,
+        to_ordinal: 249,
+      }),
+    )
     await waitFor(() => expect(screen.getByTestId('sentence-view-slot')).toHaveTextContent('w250'))
+  })
+
+  it('advances the sentence via bulk-known with the exact ordinal range, then undoes via the toast', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue({
+      ...baseLesson,
+      reader_position: { view_mode: 'sentence', current_segment_id: 'seg-1', current_token_ordinal: 0 },
+    })
+    vi.mocked(readerApi.bulkKnown).mockResolvedValue({ action_id: 'action-s1', created_count: 250 })
+    vi.mocked(readerApi.undoBulk).mockResolvedValue({ undone_count: 250 })
+
+    renderPage()
+
+    await screen.findByTestId('sentence-view-slot')
+    fireEvent.click(screen.getByRole('button', { name: 'Следующее предложение' }))
+
+    await waitFor(() =>
+      expect(firstCallArg(vi.mocked(readerApi.bulkKnown))).toEqual({
+        lesson_id: 'lesson-1',
+        from_ordinal: 0,
+        to_ordinal: 249,
+      }),
+    )
+
+    const toast = await screen.findByTestId('undo-toast')
+    expect(toast).toHaveTextContent('250 слов помечены как known')
+    await waitFor(() => expect(screen.getByTestId('sentence-view-slot')).toHaveTextContent('w250'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отменить' }))
+
+    await waitFor(() => expect(firstCallArg(vi.mocked(readerApi.undoBulk))).toEqual('action-s1'))
+    await waitFor(() => expect(screen.queryByTestId('undo-toast')).not.toBeInTheDocument())
+  })
+
+  it('does not advance the sentence and shows an error when bulk-known fails', async () => {
+    vi.mocked(lessonsApi.get).mockResolvedValue({
+      ...baseLesson,
+      reader_position: { view_mode: 'sentence', current_segment_id: 'seg-1', current_token_ordinal: 0 },
+    })
+    vi.mocked(readerApi.bulkKnown).mockRejectedValue(new Error('network error'))
+
+    renderPage()
+
+    await screen.findByTestId('sentence-view-slot')
+    fireEvent.click(screen.getByRole('button', { name: 'Следующее предложение' }))
+
+    await screen.findByTestId('bulk-error')
+    expect(screen.getByTestId('sentence-view-slot')).toHaveTextContent('w0')
+    expect(screen.getByTestId('sentence-view-slot')).not.toHaveTextContent('w250')
+  })
+
+  it('advances past a punctuation-only sentence without calling bulk-known', async () => {
+    const punctuationSentence: Sentence = {
+      seg_id: 'seg-punct',
+      index: 0,
+      text: '…',
+      normalized_text: '…',
+      tokens: [{ p: '…' }],
+    }
+    vi.mocked(lessonsApi.get).mockResolvedValue({
+      ...baseLesson,
+      reader_position: { view_mode: 'sentence', current_segment_id: 'seg-punct', current_token_ordinal: 0 },
+    })
+    vi.mocked(readerApi.content).mockResolvedValue({
+      ...content,
+      paragraphs: [{ sentences: [punctuationSentence, sentence1] }],
+    })
+
+    renderPage()
+
+    await screen.findByTestId('sentence-view-slot')
+    fireEvent.click(screen.getByRole('button', { name: 'Следующее предложение' }))
+
+    await waitFor(() => expect(screen.getByTestId('sentence-view-slot')).toHaveTextContent('w0'))
     expect(readerApi.bulkKnown).not.toHaveBeenCalled()
   })
 

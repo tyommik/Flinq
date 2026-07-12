@@ -266,8 +266,38 @@ export function ReaderPage({ lang, lessonId }: Props) {
   }
 
   function handleNextSentence() {
-    if (!canNextSentence) return
-    setSentenceFlatIndex(Math.min(flatSentences.length - 1, clampedSentenceIndex + 1))
+    if (!canNextSentence || !currentSentence) return
+
+    const words = currentSentence.tokens.filter(isWord)
+    const firstWord = words[0]
+    const lastWord = words[words.length - 1]
+    if (!firstWord || !lastWord) {
+      // Punctuation-only sentence — nothing to mark known, just advance.
+      setSentenceFlatIndex(Math.min(flatSentences.length - 1, clampedSentenceIndex + 1))
+      return
+    }
+
+    bulkKnown.mutate(
+      {
+        lesson_id: lessonId,
+        from_ordinal: firstWord.i,
+        to_ordinal: lastWord.i,
+      },
+      {
+        onSuccess: (result) => {
+          setSentenceFlatIndex(Math.min(flatSentences.length - 1, clampedSentenceIndex + 1))
+          // Arm undo even when created_count === 0 — same reasoning as in
+          // handleNextPage: the server-side bulk action still exists.
+          setLastBulkActionId(result.action_id)
+          setToastCount(result.created_count > 0 ? result.created_count : null)
+        },
+        onError: () => {
+          // Do not advance the sentence on failure — show a transient error
+          // instead so the user knows the sentence wasn't marked known.
+          setBulkErrorVisible(true)
+        },
+      },
+    )
   }
 
   const handlePrev = mode === 'page' ? handlePrevPage : handlePrevSentence
