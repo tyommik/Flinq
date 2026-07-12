@@ -35,7 +35,7 @@ class LookupResponse(BaseModel):
 
 
 class CreateItemRequest(BaseModel):
-    kind: Literal["token"] = "token"
+    kind: Literal["token", "phrase"] = "token"
     language_code: LangCode
     text: str = Field(min_length=1, max_length=256)
     status: ItemStatus

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from flinq.core.textnorm import normalize_token
 from flinq.modules.dictionary.models import DictionaryEntry, DictionarySourceVersion
 from flinq.modules.lesson_library.models import Lesson, LessonSegment, LessonTokenOccurrence
+from flinq.modules.lesson_library.tokenization import normalize_phrase
 from flinq.modules.vocabulary.models import (
     ItemTag,
     PersonalNote,
@@ -44,6 +45,10 @@ class TranslationNotFound(Exception):  # noqa: N818 -- matches sibling exception
 
 class DuplicateTranslation(Exception):  # noqa: N818 -- matches sibling exception naming
     """Another variant with the same text exists for this item/target."""
+
+
+class InvalidPhrase(Exception):  # noqa: N818 -- matches sibling exception naming
+    """Phrase text has fewer than 2 or more than 8 word tokens."""
 
 
 @dataclass
@@ -94,6 +99,17 @@ async def _get_token_item(
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+async def _get_phrase_item(
+    session: AsyncSession, *, user_id: uuid.UUID, language_code: str, text: str
+) -> PhraseItem | None:
+    stmt = select(PhraseItem).where(
+        PhraseItem.user_id == user_id,
+        PhraseItem.language_code == language_code,
+        PhraseItem.phrase_text == text,
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
 async def _owned_item(
     session: AsyncSession, *, user_id: uuid.UUID, kind: str, item_id: uuid.UUID
 ) -> VocabItem:
@@ -112,8 +128,34 @@ async def create_item(
     text: str,
     status: str,
     confidence: int | None,
-) -> TokenItem:
+) -> VocabItem:
     _check_kind(kind)
+    if kind == "phrase":
+        normalized = normalize_phrase(text)
+        word_count = len(normalized.split(" ")) if normalized else 0
+        if not 2 <= word_count <= 8:
+            raise InvalidPhrase(text)
+        existing_phrase = await _get_phrase_item(
+            session, user_id=user_id, language_code=language_code, text=normalized
+        )
+        if existing_phrase is not None:
+            existing_phrase.status = status
+            existing_phrase.confidence = confidence
+            _promote_to_user(existing_phrase)
+            await session.commit()
+            return existing_phrase
+        phrase = PhraseItem(
+            user_id=user_id,
+            language_code=language_code,
+            phrase_text=normalized,
+            display_text=text.strip(),
+            status=status,
+            confidence=confidence,
+            added_by="user",
+        )
+        session.add(phrase)
+        await session.commit()
+        return phrase
     normalized = normalize_token(text)
     existing = await _get_token_item(
         session, user_id=user_id, language_code=language_code, text=normalized
@@ -215,11 +257,19 @@ async def lookup(
     language_code: str,
     text: str,
     target_language_code: str,
+    kind: str = "token",
 ) -> LookupResult:
-    normalized = normalize_token(text)
-    item = await _get_token_item(
-        session, user_id=user_id, language_code=language_code, text=normalized
-    )
+    _check_kind(kind)
+    if kind == "phrase":
+        normalized = normalize_phrase(text)
+        item: VocabItem | None = await _get_phrase_item(
+            session, user_id=user_id, language_code=language_code, text=normalized
+        )
+    else:
+        normalized = normalize_token(text)
+        item = await _get_token_item(
+            session, user_id=user_id, language_code=language_code, text=normalized
+        )
     if item is None:
         return LookupResult(
             item_id=None,
@@ -230,7 +280,7 @@ async def lookup(
             note=None,
             tags=[],
         )
-    translations = await _item_translations(session, user_id=user_id, kind="token", item_id=item.id)
+    translations = await _item_translations(session, user_id=user_id, kind=kind, item_id=item.id)
     primary = next(
         (
             t
@@ -243,12 +293,12 @@ async def lookup(
         await session.execute(
             select(PersonalNote).where(
                 PersonalNote.owner_user_id == user_id,
-                PersonalNote.item_kind == "token",
+                PersonalNote.item_kind == kind,
                 PersonalNote.item_id == item.id,
             )
         )
     ).scalar_one_or_none()
-    tags = await _list_tags(session, user_id=user_id, kind="token", item_id=item.id)
+    tags = await _list_tags(session, user_id=user_id, kind=kind, item_id=item.id)
     return LookupResult(
         item_id=item.id,
         status=item.status,

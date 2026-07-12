@@ -63,6 +63,7 @@ async def lookup(
     text: Annotated[str, Query(min_length=1, max_length=256)],
     target: LangCode,
     session: Annotated[AsyncSession, Depends(get_session)],
+    kind: Kind = "token",
 ) -> LookupResponse:
     user_id = _require_user(request)
     res = await service.lookup(
@@ -71,6 +72,7 @@ async def lookup(
         language_code=lang,
         text=text,
         target_language_code=target,
+        kind=kind,
     )
     return LookupResponse(
         item_id=res.item_id,
@@ -92,21 +94,21 @@ async def create_item(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ItemStateResponse:
     user_id = _require_user(request)
-    item = await service.create_item(
-        session,
-        user_id=user_id,
-        kind=body.kind,
-        language_code=body.language_code,
-        text=body.text,
-        status=body.status,
-        confidence=body.confidence,
-    )
+    try:
+        item = await service.create_item(
+            session,
+            user_id=user_id,
+            kind=body.kind,
+            language_code=body.language_code,
+            text=body.text,
+            status=body.status,
+            confidence=body.confidence,
+        )
+    except service.InvalidPhrase:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "phrase must contain 2..8 words"
+        ) from None
     return ItemStateResponse(item_id=item.id, status=item.status, confidence=item.confidence)
-
-
-def _resolve(kind: str) -> None:
-    if kind != "token":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unsupported item kind")
 
 
 @router.patch("/items/{kind}/{item_id}", response_model=ItemStateResponse)
@@ -118,7 +120,6 @@ async def patch_item(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ItemStateResponse:
     user_id = _require_user(request)
-    _resolve(kind)
     try:
         item = await service.patch_item(
             session,
@@ -143,7 +144,6 @@ async def add_translation(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TranslationOut:
     user_id = _require_user(request)
-    _resolve(kind)
     try:
         row, created = await service.add_translation(
             session,
@@ -172,7 +172,6 @@ async def update_translation(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TranslationOut:
     user_id = _require_user(request)
-    _resolve(kind)
     try:
         row = await service.update_translation(
             session,
@@ -201,7 +200,6 @@ async def delete_translation(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TranslationListResponse:
     user_id = _require_user(request)
-    _resolve(kind)
     try:
         rows = await service.delete_translation(
             session,
@@ -224,7 +222,6 @@ async def put_note(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> NoteResponse:
     user_id = _require_user(request)
-    _resolve(kind)
     try:
         row = await service.put_note(
             session,
@@ -247,7 +244,6 @@ async def add_tag(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TagsResponse:
     user_id = _require_user(request)
-    _resolve(kind)
     try:
         tags = await service.add_tag(
             session,
@@ -270,7 +266,6 @@ async def remove_tag(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TagsResponse:
     user_id = _require_user(request)
-    _resolve(kind)
     try:
         tags = await service.remove_tag(
             session,
