@@ -80,3 +80,14 @@ async def test_word_count_check_rejects_nine_words():
         with pytest.raises(IntegrityError):
             await s.flush()
         await s.rollback()
+
+
+async def test_word_count_check_rejects_blank_text():
+    # ' ' splits into two EMPTY chunks — the old array_length check counted
+    # them as 2 words; the regex check requires non-space characters.
+    async with session_scope() as s:
+        user_id = await _make_user(s)
+        s.add(_phrase(user_id, text=" "))
+        with pytest.raises(IntegrityError):
+            await s.flush()
+        await s.rollback()

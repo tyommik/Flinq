@@ -32,5 +32,12 @@ def test_empty_and_punct_only() -> None:
     assert normalize_phrase("?! …") == ""
 
 
+def test_word_like_tokens_with_empty_normalization_dropped() -> None:
+    # '_' matches \w (word-like) but normalize_token strips it to '' —
+    # such tokens must not become empty "words" in the join key.
+    assert normalize_phrase("_ _") == ""
+    assert normalize_phrase("so _ good") == "so good"
+
+
 def test_idempotent_on_normalized_text() -> None:
     assert normalize_phrase("so far so good") == "so far so good"

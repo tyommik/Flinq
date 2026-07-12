@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from sqlalchemy import Select, and_, delete, exists, func, literal, or_, select, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flinq.core.textnorm import normalize_token
@@ -154,7 +155,23 @@ async def create_item(
             added_by="user",
         )
         session.add(phrase)
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError:
+            # Lost a create-create race: another transaction inserted the same
+            # (user, language, phrase_text) between our pre-check and commit.
+            # Upsert semantics: fall back to updating the winner's row.
+            await session.rollback()
+            existing_phrase = await _get_phrase_item(
+                session, user_id=user_id, language_code=language_code, text=normalized
+            )
+            if existing_phrase is None:
+                raise
+            existing_phrase.status = status
+            existing_phrase.confidence = confidence
+            _promote_to_user(existing_phrase)
+            await session.commit()
+            return existing_phrase
         return phrase
     normalized = normalize_token(text)
     existing = await _get_token_item(
@@ -175,7 +192,21 @@ async def create_item(
         added_by="user",
     )
     session.add(item)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Same create-create race as the phrase branch (uq_token_items_user_lang_text).
+        await session.rollback()
+        existing = await _get_token_item(
+            session, user_id=user_id, language_code=language_code, text=normalized
+        )
+        if existing is None:
+            raise
+        existing.status = status
+        existing.confidence = confidence
+        _promote_to_user(existing)
+        await session.commit()
+        return existing
     return item
 
 
@@ -221,11 +252,17 @@ async def _owned_translation(
     session: AsyncSession,
     *,
     user_id: uuid.UUID,
+    kind: str,
     item_id: uuid.UUID,
     translation_id: uuid.UUID,
 ) -> PersonalTranslation:
     row = await session.get(PersonalTranslation, translation_id)
-    if row is None or row.owner_user_id != user_id or row.item_id != item_id:
+    if (
+        row is None
+        or row.owner_user_id != user_id
+        or row.item_kind != kind
+        or row.item_id != item_id
+    ):
         raise TranslationNotFound(str(translation_id))
     return row
 
@@ -374,7 +411,7 @@ async def update_translation(
     item = await _owned_item(session, user_id=user_id, kind=kind, item_id=item_id)
     _promote_to_user(item)
     row = await _owned_translation(
-        session, user_id=user_id, item_id=item_id, translation_id=translation_id
+        session, user_id=user_id, kind=kind, item_id=item_id, translation_id=translation_id
     )
     if row.translation_text == translation_text:
         return row
@@ -410,7 +447,7 @@ async def delete_translation(
     item = await _owned_item(session, user_id=user_id, kind=kind, item_id=item_id)
     _promote_to_user(item)
     row = await _owned_translation(
-        session, user_id=user_id, item_id=item_id, translation_id=translation_id
+        session, user_id=user_id, kind=kind, item_id=item_id, translation_id=translation_id
     )
     was_primary = row.is_primary
     target = row.target_language_code

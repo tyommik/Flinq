@@ -58,9 +58,14 @@ def normalize_phrase(surface: str) -> str:
     """Phrase join key (ADR-0001): normalized word tokens joined by single spaces.
 
     Uses the same tokenizer as lesson import, so the result always matches the
-    `normalized_text` sequence of lesson tokens. Punctuation tokens are dropped.
+    `normalized_text` sequence of lesson tokens. Punctuation tokens are dropped,
+    as are word-like tokens whose normalized form is empty (e.g. "_", which is
+    word-like but normalizes to "") — otherwise they would inject bogus empty
+    "words" into the join key.
     """
-    return " ".join(t.normalized_text for t in tokenize(surface) if t.is_word_like)
+    return " ".join(
+        t.normalized_text for t in tokenize(surface) if t.is_word_like and t.normalized_text
+    )
 
 
 # ---------------------------------------------------------------------------

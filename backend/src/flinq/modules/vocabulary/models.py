@@ -99,8 +99,9 @@ class PhraseItem(Base):
             name="ck_phrase_items_confidence_tracked",
         ),
         CheckConstraint("added_by IN ('user', 'bulk')", name="ck_phrase_items_added_by"),
+        # 2..8 non-space words joined by single spaces (empties structurally excluded).
         CheckConstraint(
-            "array_length(string_to_array(phrase_text, ' '), 1) BETWEEN 2 AND 8",
+            r"phrase_text ~ '^\S+( \S+){1,7}$'",
             name="ck_phrase_items_word_count",
         ),
         Index("ix_phrase_items_user_lang", "user_id", "language_code"),

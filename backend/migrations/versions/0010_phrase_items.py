@@ -67,5 +67,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Satellite tables reference phrase items only by (item_kind, item_id) —
+    # no FK — so dropping phrase_items would orphan their 'phrase' rows.
+    op.execute(sa.text("DELETE FROM personal_translations WHERE item_kind = 'phrase'"))
+    op.execute(sa.text("DELETE FROM personal_notes WHERE item_kind = 'phrase'"))
+    op.execute(sa.text("DELETE FROM item_tags WHERE item_kind = 'phrase'"))
     op.drop_index("ix_phrase_items_user_lang", table_name="phrase_items")
     op.drop_table("phrase_items")
